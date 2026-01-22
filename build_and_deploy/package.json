@@ -4,7 +4,7 @@
   "description": "Github action to deploy template and parameter files to Synapse Workspace.",
   "main": "entrypoint.js",
   "scripts": {
-    "test": "mocha",
+    "test": "mocha -r ts-node/register \"test/**/*.ts\"",
     "start": "node entrypoint.js",
     "build": "tsc"
   },
