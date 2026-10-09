@@ -1,11 +1,11 @@
 export const DATASETPAYLOAD = {
-    id: "/subscriptions/051ddeca-1ed6-4d8b-ba6f-1ff561e5f3b3/resourceGroups/bigdataqa/providers/Microsoft.Synapse/workspaces/bigdataqa0924ws/datasets/OutParquet",
+    id: "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example/providers/Microsoft.Synapse/workspaces/myworkspace/datasets/OutParquet",
     name: "OutParquet",
     type: "Microsoft.Synapse/workspaces/datasets",
-    etag: "f608dd2e-0000-0200-0000-5f6d79a40000",
+    etag: "00000000-0000-0000-0000-000000000000",
     properties: {
         linkedServiceName: {
-            referenceName: "bigdataqa0924ws-WorkspaceDefaultStorage",
+            referenceName: "myworkspace-WorkspaceDefaultStorage",
             type: "LinkedServiceReference"
         },
         annotations: [],
@@ -14,7 +14,7 @@ export const DATASETPAYLOAD = {
             location: {
                 type: "AzureBlobFSLocation",
                 folderPath: "TestPipeline",
-                fileSystem: "hozhao"
+                fileSystem: "examplefs"
             },
             compressionCodec: "snappy"
         },
@@ -50,7 +50,7 @@ export const DEFAULTARTIFACTSQL = {
         "annotations": [],
         "type": "AzureSqlDW",
         "typeProperties": {
-            "connectionString": "[parameters('dancicdtest-WorkspaceDefaultSqlServer_connectionString')]"
+            "connectionString": "[parameters('myworkspace-WorkspaceDefaultSqlServer_connectionString')]"
         },
         "connectVia": {
             "referenceName": "AutoResolveIntegrationRuntime",
@@ -70,7 +70,7 @@ export const DEFAULTARTIFACTSTORAGE = {
         "annotations": [],
         "type": "AzureBlobFS",
         "typeProperties": {
-            "url": "[parameters('dancicdtest-WorkspaceDefaultStorage_properties_typeProperties_url')]"
+            "url": "[parameters('myworkspace-WorkspaceDefaultStorage_properties_typeProperties_url')]"
         },
         "connectVia": {
             "referenceName": "AutoResolveIntegrationRuntime",
@@ -101,7 +101,7 @@ export const DEFAULTARTIFACTFAIl1 = {
         "annotations": [],
         "type": "AzureBlobFS",
         "typeProperties": {
-            "url": "[parameters('dancicdtest-WorkspaceDefaultStorage_properties_typeProperties_url')]"
+            "url": "[parameters('myworkspace-WorkspaceDefaultStorage_properties_typeProperties_url')]"
         },
         "connectVia": {
             "referenceName": "AutoResolveIntegrationRuntime",
@@ -121,7 +121,7 @@ export const DEFAULTARTIFACTFAIl2 = {
         "annotations": [],
         "type": "AzureBlobFS",
         "typeProperties": {
-            "url": "[parameters('dancicdtest-WorkspaceDefaultStorage_properties_typeProperties_url')]"
+            "url": "[parameters('myworkspace-WorkspaceDefaultStorage_properties_typeProperties_url')]"
         },
         "connectVia": {
             "referenceName": "AutoResolveIntegrationRuntime",
@@ -141,7 +141,7 @@ export const DEFAULTARTIFACTFAIl3 = {
         "annotations": [],
         "type": "SparkPool",
         "typeProperties": {
-            "url": "[parameters('dancicdtest-WorkspaceDefaultStorage_properties_typeProperties_url')]"
+            "url": "[parameters('myworkspace-WorkspaceDefaultStorage_properties_typeProperties_url')]"
         },
         "connectVia": {
             "referenceName": "AutoResolveIntegrationRuntime",

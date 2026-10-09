@@ -21,7 +21,7 @@ inputs:
     description: 'Provide the resource group of the target Synapse workspace.'
     required: true
   clientId:
-    description: 'Provide client id of service principal.'
+    description: 'Provide client id of service principal. With managedIdentity, it selects a user-assigned managed identity; leave it empty for the system-assigned identity.'
     required: false
   clientSecret:
     description: 'Provide client secret of the service principal.'
@@ -36,7 +36,7 @@ inputs:
     description: 'Delete the artifacts which are in the workspace but not in the template.'
     required: false
   managedIdentity:
-    description: 'Use managed identity to generate the bearer token?'
+    description: 'Use managed identity to generate the bearer token? Set clientId to use a user-assigned identity; otherwise the system-assigned identity is used.'
     required: false
   federatedIdentity:
     description: 'Use federated identity to generate the bearer token?'

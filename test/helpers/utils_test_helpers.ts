@@ -5,15 +5,15 @@ export var armTemplate = "{\n" +
     "    \"workspaceName\": {\n" +
     "      \"type\": \"string\",\n" +
     "      \"metadata\": \"Workspace name\",\n" +
-    "      \"defaultValue\": \"github-cicd-1\"\n" +
+    "      \"defaultValue\": \"myworkspace\"\n" +
     "    },\n" +
-    "    \"github-cicd-1-WorkspaceDefaultSqlServer_connectionString\": {\n" +
+    "    \"myworkspace-WorkspaceDefaultSqlServer_connectionString\": {\n" +
     "      \"type\": \"secureString\",\n" +
-    "      \"metadata\": \"Secure string for 'connectionString' of 'github-cicd-1-WorkspaceDefaultSqlServer'\"\n" +
+    "      \"metadata\": \"Secure string for 'connectionString' of 'myworkspace-WorkspaceDefaultSqlServer'\"\n" +
     "    },\n" +
-    "    \"github-cicd-1-WorkspaceDefaultStorage_properties_typeProperties_url\": {\n" +
+    "    \"myworkspace-WorkspaceDefaultStorage_properties_typeProperties_url\": {\n" +
     "      \"type\": \"string\",\n" +
-    "      \"defaultValue\": \"https://githubcicd.dfs.core.windows.net\"\n" +
+    "      \"defaultValue\": \"https://examplestorage.dfs.core.windows.net\"\n" +
     "    }\n" +
     "  },\n" +
     "  \"variables\": {\n" +
@@ -89,10 +89,10 @@ export var armTemplate = "{\n" +
     "            \"name\": \"python\"\n" +
     "          },\n" +
     "          \"a365ComputeOptions\": {\n" +
-    "            \"id\": \"/subscriptions/fcf65c12-e569-4fe5-8433-b4142d1f6219/resourceGroups/gitcicdrg/providers/Microsoft.Synapse/workspaces/gitcicdsynapse/bigDataPools/sparkpoolgit\",\n" +
+    "            \"id\": \"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example/providers/Microsoft.Synapse/workspaces/myworkspace/bigDataPools/sparkpoolgit\",\n" +
     "            \"name\": \"sparkpoolgit\",\n" +
     "            \"type\": \"Spark\",\n" +
-    "            \"endpoint\": \"https://gitcicdsynapse.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/sparkpoolgit\",\n" +
+    "            \"endpoint\": \"https://myworkspace.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/sparkpoolgit\",\n" +
     "            \"auth\": {\n" +
     "              \"type\": \"AAD\",\n" +
     "              \"authResource\": \"https://dev.azuresynapse.net\"\n" +
@@ -124,7 +124,7 @@ export var armTemplate = "{\n" +
     "      \"dependsOn\": []\n" +
     "    },\n" +
     "   {\n" +
-    "      \"name\": \"[concat(parameters('workspaceName'), '/github-cicd-1-WorkspaceDefaultSqlServer')]\",\n" +
+    "      \"name\": \"[concat(parameters('workspaceName'), '/myworkspace-WorkspaceDefaultSqlServer')]\",\n" +
     "      \"type\": \"Microsoft.Synapse/workspaces/linkedServices\",\n" +
     "      \"apiVersion\": \"2019-06-01-preview\",\n" +
     "      \"properties\": {\n" +
@@ -136,7 +136,7 @@ export var armTemplate = "{\n" +
     "        \"annotations\": [],\n" +
     "        \"type\": \"AzureSqlDW\",\n" +
     "        \"typeProperties\": {\n" +
-    "          \"connectionString\": \"[parameters('github-cicd-1-WorkspaceDefaultSqlServer_connectionString')]\"\n" +
+    "          \"connectionString\": \"[parameters('myworkspace-WorkspaceDefaultSqlServer_connectionString')]\"\n" +
     "        },\n" +
     "        \"connectVia\": {\n" +
     "          \"referenceName\": \"AutoResolveIntegrationRuntime\",\n" +
@@ -157,15 +157,15 @@ export var armTemplate_complete = "{\n" +
     "    \"workspaceName\": {\n" +
     "      \"type\": \"string\",\n" +
     "      \"metadata\": \"Workspace name\",\n" +
-    "      \"defaultValue\": \"github-cicd-1\"\n" +
+    "      \"defaultValue\": \"myworkspace\"\n" +
     "    },\n" +
-    "    \"github-cicd-1-WorkspaceDefaultSqlServer_connectionString\": {\n" +
+    "    \"myworkspace-WorkspaceDefaultSqlServer_connectionString\": {\n" +
     "      \"type\": \"secureString\",\n" +
-    "      \"metadata\": \"Secure string for 'connectionString' of 'github-cicd-1-WorkspaceDefaultSqlServer'\"\n" +
+    "      \"metadata\": \"Secure string for 'connectionString' of 'myworkspace-WorkspaceDefaultSqlServer'\"\n" +
     "    },\n" +
-    "    \"github-cicd-1-WorkspaceDefaultStorage_properties_typeProperties_url\": {\n" +
+    "    \"myworkspace-WorkspaceDefaultStorage_properties_typeProperties_url\": {\n" +
     "      \"type\": \"string\",\n" +
-    "      \"defaultValue\": \"https://githubcicd.dfs.core.windows.net\"\n" +
+    "      \"defaultValue\": \"https://examplestorage.dfs.core.windows.net\"\n" +
     "    }\n" +
     "  },\n" +
     "  \"variables\": {\n" +
@@ -241,10 +241,10 @@ export var armTemplate_complete = "{\n" +
     "            \"name\": \"python\"\n" +
     "          },\n" +
     "          \"a365ComputeOptions\": {\n" +
-    "            \"id\": \"/subscriptions/fcf65c12-e569-4fe5-8433-b4142d1f6219/resourceGroups/gitcicdrg/providers/Microsoft.Synapse/workspaces/gitcicdsynapse/bigDataPools/sparkpoolgit\",\n" +
+    "            \"id\": \"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example/providers/Microsoft.Synapse/workspaces/myworkspace/bigDataPools/sparkpoolgit\",\n" +
     "            \"name\": \"sparkpoolgit\",\n" +
     "            \"type\": \"Spark\",\n" +
-    "            \"endpoint\": \"https://gitcicdsynapse.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/sparkpoolgit\",\n" +
+    "            \"endpoint\": \"https://myworkspace.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/sparkpoolgit\",\n" +
     "            \"auth\": {\n" +
     "              \"type\": \"AAD\",\n" +
     "              \"authResource\": \"https://dev.azuresynapse.net\"\n" +
@@ -276,7 +276,7 @@ export var armTemplate_complete = "{\n" +
     "      \"dependsOn\": []\n" +
     "    },\n" +
     "   {\n" +
-    "      \"name\": \"[concat(parameters('workspaceName'), '/github-cicd-1-WorkspaceDefaultSqlServer')]\",\n" +
+    "      \"name\": \"[concat(parameters('workspaceName'), '/myworkspace-WorkspaceDefaultSqlServer')]\",\n" +
     "      \"type\": \"Microsoft.Synapse/workspaces/linkedServices\",\n" +
     "      \"apiVersion\": \"2019-06-01-preview\",\n" +
     "      \"properties\": {\n" +
@@ -288,7 +288,7 @@ export var armTemplate_complete = "{\n" +
     "        \"annotations\": [],\n" +
     "        \"type\": \"AzureSqlDW\",\n" +
     "        \"typeProperties\": {\n" +
-    "          \"connectionString\": \"[parameters('github-cicd-1-WorkspaceDefaultSqlServer_connectionString')]\"\n" +
+    "          \"connectionString\": \"[parameters('myworkspace-WorkspaceDefaultSqlServer_connectionString')]\"\n" +
     "        },\n" +
     "        \"connectVia\": {\n" +
     "          \"referenceName\": \"AutoResolveIntegrationRuntime\",\n" +
@@ -326,13 +326,13 @@ export var armParams = "{\n" +
     "\t\"contentVersion\": \"1.0.0.0\",\n" +
     "\t\"parameters\": {\n" +
     "\t\t\"workspaceName\": {\n" +
-    "\t\t\t\"value\": \"github-cicd-1\"\n" +
+    "\t\t\t\"value\": \"myworkspace\"\n" +
     "\t\t},\n" +
-    "\t\t\"github-cicd-1-WorkspaceDefaultSqlServer_connectionString\": {\n" +
+    "\t\t\"myworkspace-WorkspaceDefaultSqlServer_connectionString\": {\n" +
     "\t\t\t\"value\": \"\"\n" +
     "\t\t},\n" +
-    "\t\t\"github-cicd-1-WorkspaceDefaultStorage_properties_typeProperties_url\": {\n" +
-    "\t\t\t\"value\": \"https://gitcicd.dfs.core.windows.net\"\n" +
+    "\t\t\"myworkspace-WorkspaceDefaultStorage_properties_typeProperties_url\": {\n" +
+    "\t\t\t\"value\": \"https://examplestorage.dfs.core.windows.net\"\n" +
     "\t\t}\n" +
     "\t}\n" +
     "}";
@@ -344,15 +344,15 @@ export let expectedArmTemplate = "{\n" +
     "    \"workspaceName\": {\n" +
     "      \"type\": \"string\",\n" +
     "      \"metadata\": \"Workspace name\",\n" +
-    "      \"defaultValue\": \"github-cicd-1\"\n" +
+    "      \"defaultValue\": \"myworkspace\"\n" +
     "    },\n" +
-    "    \"github-cicd-1-WorkspaceDefaultSqlServer_connectionString\": {\n" +
+    "    \"myworkspace-WorkspaceDefaultSqlServer_connectionString\": {\n" +
     "      \"type\": \"secureString\",\n" +
-    "      \"metadata\": \"Secure string for 'connectionString' of 'github-cicd-1-WorkspaceDefaultSqlServer'\"\n" +
+    "      \"metadata\": \"Secure string for 'connectionString' of 'myworkspace-WorkspaceDefaultSqlServer'\"\n" +
     "    },\n" +
-    "    \"github-cicd-1-WorkspaceDefaultStorage_properties_typeProperties_url\": {\n" +
+    "    \"myworkspace-WorkspaceDefaultStorage_properties_typeProperties_url\": {\n" +
     "      \"type\": \"string\",\n" +
-    "      \"defaultValue\": \"https://githubcicd.dfs.core.windows.net\"\n" +
+    "      \"defaultValue\": \"https://examplestorage.dfs.core.windows.net\"\n" +
     "    }\n" +
     "  },\n" +
     "  \"variables\": {\n" +
@@ -428,10 +428,10 @@ export let expectedArmTemplate = "{\n" +
     "            \"name\": \"python\"\n" +
     "          },\n" +
     "          \"a365ComputeOptions\": {\n" +
-    "            \"id\": \"/subscriptions/fcf65c12-e569-4fe5-8433-b4142d1f6219/resourceGroups/gitcicdrg/providers/Microsoft.Synapse/workspaces/gitcicdsynapse/bigDataPools/sparkpoolgit\",\n" +
+    "            \"id\": \"/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-example/providers/Microsoft.Synapse/workspaces/myworkspace/bigDataPools/sparkpoolgit\",\n" +
     "            \"name\": \"sparkpoolgit\",\n" +
     "            \"type\": \"Spark\",\n" +
-    "            \"endpoint\": \"https://gitcicdsynapse.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/sparkpoolgit\",\n" +
+    "            \"endpoint\": \"https://myworkspace.dev.azuresynapse.net/livyApi/versions/2019-11-01-preview/sparkPools/sparkpoolgit\",\n" +
     "            \"auth\": {\n" +
     "              \"type\": \"AAD\",\n" +
     "              \"authResource\": \"https://dev.azuresynapse.net\"\n" +
@@ -463,7 +463,7 @@ export let expectedArmTemplate = "{\n" +
     "      \"dependsOn\": []\n" +
     "    },\n" +
     "   {\n" +
-    "      \"name\": \"MochaTesting/github-cicd-1-WorkspaceDefaultSqlServer\",\n" +
+    "      \"name\": \"MochaTesting/myworkspace-WorkspaceDefaultSqlServer\",\n" +
     "      \"type\": \"Microsoft.Synapse/workspaces/linkedServices\",\n" +
     "      \"apiVersion\": \"2019-06-01-preview\",\n" +
     "      \"properties\": {\n" +

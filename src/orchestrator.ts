@@ -8,7 +8,7 @@ import { getArtifacts, Resource } from "./utils/arm_template_utils";
 import { Artifact } from "./utils/artifacts_enum";
 import { DeployStatus } from "./utils/deploy_utils";
 import { SystemLogger } from "./utils/logger";
-import { getWorkspaceLocation } from "./utils/service_principal_client_utils";
+import { getWorkspaceLocation } from "./clients/arm";
 import {
     DatalakeSubArtifactsToDelete,
     getArtifactsFromWorkspace,

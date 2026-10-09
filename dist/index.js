@@ -362,6 +362,45 @@ exports.OperationManager = OperationManager;
 
 /***/ }),
 
+/***/ 1854:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getWorkspaceLocation = getWorkspaceLocation;
+const http_1 = __nccwpck_require__(9523);
+const logger_1 = __nccwpck_require__(8993);
+async function getWorkspaceLocation(params, targetWorkspace) {
+    try {
+        const headers = {
+            'Authorization': 'Bearer ' + params.bearer
+        };
+        const url = `${params.resourceManagerEndpointUrl}subscriptions/${params.subscriptionId}/` +
+            `resourceGroups/${params.resourceGroup}/providers/Microsoft.Synapse/workspaces/` +
+            `${targetWorkspace}?api-version=2019-06-01-preview`;
+        const res = await http_1.httpClient.get(url, headers);
+        const resStatus = res.message.statusCode;
+        const body = await (0, http_1.readBody)(res);
+        if ((0, http_1.isRedirectStatus)(resStatus)) {
+            throw (0, http_1.redirectError)(res);
+        }
+        if (!(0, http_1.isSuccessStatus)(resStatus)) {
+            logger_1.SystemLogger.info(`Unable to fetch location of workspace, status: ${resStatus}; status message: ${res.message.statusMessage}`);
+            throw new Error(`status ${resStatus}: ${body}.` + (0, http_1.permissionHint)(resStatus, 'a role that can read the workspace (for example Reader) on the resource group'));
+        }
+        logger_1.SystemLogger.info(`Able to fetch location of workspace: ${resStatus}; status message: ${res.message.statusMessage}`);
+        return JSON.parse(body)['location'];
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error("Unable to fetch the location of the workspace: " + message);
+    }
+}
+//# sourceMappingURL=arm.js.map
+
+/***/ }),
+
 /***/ 8281:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -405,7 +444,8 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ArtifactClient = exports.typeMap = void 0;
 const core = __importStar(__nccwpck_require__(7484));
-const httpClient = __importStar(__nccwpck_require__(6184));
+const http_1 = __nccwpck_require__(9523);
+const auth_1 = __nccwpck_require__(5367);
 const artifacts_enum_1 = __nccwpck_require__(8502);
 const deploy_utils_1 = __nccwpck_require__(3284);
 const logger_1 = __nccwpck_require__(8993);
@@ -431,7 +471,6 @@ exports.typeMap = new Map([
 class ArtifactClient {
     params;
     client;
-    requestOptions = {};
     apiVersion = 'api-version=2019-06-01-preview';
     symsApiVersion = 'api-version=2021-04-01';
     idwValidation = 'validationtype=IDWValidation';
@@ -439,8 +478,7 @@ class ArtifactClient {
     deploymentTrackingRequests;
     constructor(params) {
         this.params = params;
-        this.requestOptions.ignoreSslError = true;
-        this.client = new httpClient.HttpClient('synapse-git-cicd-deploy-task', undefined, this.requestOptions);
+        this.client = http_1.httpClient;
         this.deploymentTrackingRequests = new Array();
     }
     getParams() {
@@ -496,25 +534,27 @@ class ArtifactClient {
         let param = await (0, deploy_utils_1.getParams)(true, location);
         let token = param.bearer;
         url = `${url}/${resource}?${this.symsApiVersion}`;
-        return new Promise(async (resolve, reject) => {
-            this.client.del(url, this.getHeaders(token)).then((res) => {
-                var resStatus = res.message.statusCode;
-                console.log(`For Artifact: ${resource}: ArtifactDeletionTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                    return reject(deploy_utils_1.DeployStatus.failed);
-                }
-                return deploy_utils_1.DeployStatus.success;
-            });
-        });
+        const res = await this.client.del(url, this.getHeaders(token));
+        var resStatus = res.message.statusCode;
+        console.log(`For Artifact: ${resource}: ArtifactDeletionTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
+        const body = await (0, http_1.readBody)(res);
+        if ((0, http_1.isRedirectStatus)(resStatus)) {
+            throw (0, http_1.redirectError)(res);
+        }
+        if (!(0, http_1.isSuccessStatus)(resStatus)) {
+            console.log(`For Artifact: ${resource}: deletion failed: ${body}`);
+            throw new Error(deploy_utils_1.DeployStatus.failed);
+        }
+        return deploy_utils_1.DeployStatus.success;
     }
     async WaitForAllDeployments(isDelete) {
         for (let i = 0; i < this.deploymentTrackingRequests.length; i++) {
             let deploymentTrackingRequest = this.deploymentTrackingRequests[i];
             if (isDelete) {
-                await this.checkStatusForDelete(deploymentTrackingRequest.url, deploymentTrackingRequest.name, deploymentTrackingRequest.token);
+                await this.checkStatusForDelete(deploymentTrackingRequest.url, deploymentTrackingRequest.name, deploymentTrackingRequest.scope);
             }
             else {
-                await this.checkStatus(deploymentTrackingRequest.url, deploymentTrackingRequest.name, deploymentTrackingRequest.token);
+                await this.checkStatus(deploymentTrackingRequest.url, deploymentTrackingRequest.name, deploymentTrackingRequest.scope);
             }
         }
         while (this.deploymentTrackingRequests.length > 0) {
@@ -554,7 +594,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.credential.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Credential deployment failed " + JSON.stringify(err));
+            throw new Error("Credential deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployIntegrationruntime(baseUrl, payload, token) {
@@ -567,7 +607,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(base_url, `${artifacts_enum_1.Artifact.integrationruntime.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Integration runtime deployment failed " + JSON.stringify(err));
+            throw new Error("Integration runtime deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployKqlScript(baseUrl, payload, token) {
@@ -576,7 +616,7 @@ class ArtifactClient {
         }
         catch (err) {
             logger_1.SystemLogger.info(err instanceof Error ? err.message : String(err));
-            throw new Error("KqlScript deployment failed " + JSON.stringify(err));
+            throw new Error("KqlScript deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployLinkedservice(baseUrl, payload, token) {
@@ -584,7 +624,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.linkedservice.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Linked service deployment failed " + JSON.stringify(err));
+            throw new Error("Linked service deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployTrigger(baseUrl, payload, token) {
@@ -592,7 +632,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.trigger.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Trigger deployment failed " + JSON.stringify(err));
+            throw new Error("Trigger deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployDataflow(baseUrl, payload, token) {
@@ -600,7 +640,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.dataflow.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Data flow deployment failed " + JSON.stringify(err));
+            throw new Error("Data flow deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployPipeline(baseUrl, payload, token) {
@@ -608,7 +648,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.pipeline.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Data set deployment failed " + JSON.stringify(err));
+            throw new Error("Data set deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployDataset(baseUrl, payload, token) {
@@ -616,7 +656,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.dataset.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Data set deployment failed " + JSON.stringify(err));
+            throw new Error("Data set deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deploySqlScript(baseUrl, payload, token) {
@@ -624,7 +664,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.sqlscript.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("SQL script deployment status " + JSON.stringify(err));
+            throw new Error("SQL script deployment status " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployNotebook(baseUrl, payload, token) {
@@ -632,7 +672,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.notebook.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Notebook deployment status " + JSON.stringify(err));
+            throw new Error("Notebook deployment status " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deploySparkJobDefinition(baseUrl, payload, token) {
@@ -640,7 +680,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.sparkjobdefinition.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("SparkJobDefination deployment status " + JSON.stringify(err));
+            throw new Error("SparkJobDefination deployment status " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployManagedPrivateEndpoint(baseUrl, payload, token) {
@@ -653,7 +693,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.managedprivateendpoints.toString()}`, payload, token);
         }
         catch (err) {
-            throw new Error("ManagedPrivateEndpoint deployment status " + JSON.stringify(err));
+            throw new Error("ManagedPrivateEndpoint deployment status " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployDatabase(baseUrl, payload, token) {
@@ -662,7 +702,7 @@ class ArtifactClient {
         }
         catch (err) {
             console.log(err);
-            throw new Error("Database deployment failed " + JSON.stringify(err));
+            throw new Error("Database deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deploySparkConfiguration(baseUrl, payload, token) {
@@ -671,7 +711,7 @@ class ArtifactClient {
         }
         catch (err) {
             console.log(err);
-            throw new Error("Spark Configuration deployment failed " + JSON.stringify(err));
+            throw new Error("Spark Configuration deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async artifactsGroupDeploymentTask(baseUrl, payloadObj, token) {
@@ -698,24 +738,20 @@ class ArtifactClient {
                     }
                 }
                 url = encodeURI(url) + `?${this.symsApiVersion}`;
-                await this.client.put(url, JSON.stringify(artifact), this.getHeaders(token)).then((res) => {
-                    let resStatus = res.message.statusCode;
-                    console.log(`For Artifact: ${artifact['name']} of type ${artifact['type']}: ArtifactDeploymentTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                    try {
-                        if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                            res.readBody().then((body) => {
-                                if (!!body) {
-                                    console.log(`For Artifact: ${artifact['name']} of type ${artifact['type']} deployment failed : ${body}`);
-                                }
-                            });
-                            throw new Error(deploy_utils_1.DeployStatus.failed);
-                        }
-                        console.log(`For Artifact: ${artifact['name']} of type ${artifact['type']} deployment successful.`);
+                const res = await this.client.put(url, JSON.stringify(artifact), this.getHeaders(token));
+                let resStatus = res.message.statusCode;
+                console.log(`For Artifact: ${artifact['name']} of type ${artifact['type']}: ArtifactDeploymentTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
+                const body = await (0, http_1.readBody)(res);
+                if ((0, http_1.isRedirectStatus)(resStatus)) {
+                    throw (0, http_1.redirectError)(res);
+                }
+                if (!(0, http_1.isSuccessStatus)(resStatus)) {
+                    if (!!body) {
+                        console.log(`For Artifact: ${artifact['name']} of type ${artifact['type']} deployment failed : ${body}`);
                     }
-                    catch (err) {
-                        throw err;
-                    }
-                });
+                    throw new Error(deploy_utils_1.DeployStatus.failed);
+                }
+                console.log(`For Artifact: ${artifact['name']} of type ${artifact['type']} deployment successful.`);
             }
             ;
             return deploy_utils_1.DeployStatus.success;
@@ -724,97 +760,107 @@ class ArtifactClient {
             throw err;
         }
     }
+    // Integration runtimes deploy through Azure Resource Manager; everything
+    // else uses the Synapse data plane.
+    async scopeFor(resourceType) {
+        if (resourceType === `${artifacts_enum_1.Artifact.integrationruntime}s`) {
+            return (0, auth_1.appendDefaultScope)(this.params.resourceManagerEndpointUrl);
+        }
+        return this.dataPlaneScope();
+    }
+    async dataPlaneScope() {
+        return (0, auth_1.appendDefaultScope)(await (0, deploy_utils_1.getRMUrl)(core.getInput('Environment')));
+    }
     async artifactDeploymentTask(baseUrl, resourceType, payloadObj, token) {
-        return new Promise(async (resolve, reject) => {
-            let url = this.buildArtifactUrl(baseUrl, resourceType, payloadObj.name);
-            let payload = payloadObj.content;
-            this.client.put(url, payload, this.getHeaders(token)).then((res) => {
-                let resStatus = res.message.statusCode;
-                logger_1.SystemLogger.info(`For Artifact: ${payloadObj.name}: ArtifactDeploymentTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                    res.readBody().then((body) => {
-                        if (!!body) {
-                            let responseJson = JSON.parse(body);
-                            logger_1.SystemLogger.info("Deploy artifact failed: " + JSON.stringify(responseJson));
-                        }
-                    });
-                    return reject(deploy_utils_1.DeployStatus.failed);
-                }
-                let location = res.message.headers.location;
-                res.readBody().then(async (body) => {
-                    let responseJson = JSON.parse(body);
-                    let operationId = responseJson['operationId'];
-                    if (!!operationId) {
-                        try {
-                            if (!location) {
-                                location = this.getStatusUrl(baseUrl, resourceType, operationId);
-                            }
-                            let deploymentTrackingRequest = {
-                                url: location,
-                                name: payloadObj.name,
-                                token: token
-                            };
-                            this.deploymentTrackingRequests.push(deploymentTrackingRequest);
-                        }
-                        catch (err) {
-                            logger_1.SystemLogger.info(`For Artifact: ${payloadObj.name}: Deployment failed with error: ${JSON.stringify(err)}`);
-                            return reject(deploy_utils_1.DeployStatus.failed);
-                        }
-                        return deploy_utils_1.DeployStatus.success;
-                    }
-                    else {
-                        if (resourceType == artifacts_enum_1.Artifact.managedprivateendpoints) {
-                            let status = responseJson['properties']['provisioningState'];
-                            if (status == "Succeeded") {
-                                return deploy_utils_1.DeployStatus.success;
-                            }
-                            if (status == "Provisioning") {
-                                let deploymentTrackingRequest = {
-                                    url: url,
-                                    name: payloadObj.name,
-                                    token: token
-                                };
-                                this.deploymentTrackingRequests.push(deploymentTrackingRequest);
-                                return deploy_utils_1.DeployStatus.success;
-                            }
-                        }
-                        return reject(deploy_utils_1.DeployStatus.failed);
-                    }
-                });
-            }, (reason) => {
-                logger_1.SystemLogger.info(`For Artifact: ${payloadObj.name}: Artifact Deployment failed: ${reason}`);
-                return reject(deploy_utils_1.DeployStatus.failed);
-            });
-        });
+        let url = this.buildArtifactUrl(baseUrl, resourceType, payloadObj.name);
+        let payload = payloadObj.content;
+        let res;
+        try {
+            res = await this.client.put(url, payload, this.getHeaders(token));
+        }
+        catch (reason) {
+            logger_1.SystemLogger.info(`For Artifact: ${payloadObj.name}: Artifact Deployment failed: ${reason}`);
+            throw deploy_utils_1.DeployStatus.failed;
+        }
+        let resStatus = res.message.statusCode;
+        logger_1.SystemLogger.info(`For Artifact: ${payloadObj.name}: ArtifactDeploymentTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
+        let body = await (0, http_1.readBody)(res);
+        if ((0, http_1.isRedirectStatus)(resStatus)) {
+            throw (0, http_1.redirectError)(res);
+        }
+        if (!(0, http_1.isSuccessStatus)(resStatus)) {
+            if (!!body) {
+                logger_1.SystemLogger.info("Deploy artifact failed: " + body);
+            }
+            throw deploy_utils_1.DeployStatus.failed;
+        }
+        let location = res.message.headers.location;
+        let responseJson = JSON.parse(body);
+        let operationId = responseJson['operationId'];
+        let scope = await this.scopeFor(resourceType);
+        if (!!operationId) {
+            if (!location) {
+                location = this.getStatusUrl(baseUrl, resourceType, operationId);
+            }
+            let deploymentTrackingRequest = {
+                url: location,
+                name: payloadObj.name,
+                scope: scope
+            };
+            this.deploymentTrackingRequests.push(deploymentTrackingRequest);
+            return deploy_utils_1.DeployStatus.success;
+        }
+        if (resourceType == artifacts_enum_1.Artifact.managedprivateendpoints) {
+            let status = responseJson['properties']['provisioningState'];
+            if (status == "Succeeded") {
+                return deploy_utils_1.DeployStatus.success;
+            }
+            if (status == "Provisioning") {
+                let deploymentTrackingRequest = {
+                    url: url,
+                    name: payloadObj.name,
+                    scope: scope
+                };
+                this.deploymentTrackingRequests.push(deploymentTrackingRequest);
+                return deploy_utils_1.DeployStatus.success;
+            }
+        }
+        throw deploy_utils_1.DeployStatus.failed;
     }
     async artifactDeletionTask(baseUrl, resourceType, payloadObj, token) {
-        return new Promise(async (resolve, reject) => {
-            var url = this.buildArtifactUrl(baseUrl, `${resourceType}s`, payloadObj.name);
-            this.client.del(url, this.getHeaders(token)).then((res) => {
-                var resStatus = res.message.statusCode;
-                logger_1.SystemLogger.info(`For Artifact: ${payloadObj.name}: ArtifactDeletionTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                    return reject(deploy_utils_1.DeployStatus.failed);
-                }
-                if (resourceType != artifacts_enum_1.Artifact.managedprivateendpoints) {
-                    var location = res.message.headers.location;
-                    if (!!location) {
-                        let deploymentTrackingRequest = {
-                            url: location,
-                            name: payloadObj.name,
-                            token: token
-                        };
-                        this.deploymentTrackingRequests.push(deploymentTrackingRequest);
-                    }
-                }
-                return deploy_utils_1.DeployStatus.success;
-            }, (reason) => {
-                logger_1.SystemLogger.info("Artifact Delete failed: " + reason);
-                return reject(deploy_utils_1.DeployStatus.failed);
-            });
-        });
+        var url = this.buildArtifactUrl(baseUrl, `${resourceType}s`, payloadObj.name);
+        let res;
+        try {
+            res = await this.client.del(url, this.getHeaders(token));
+        }
+        catch (reason) {
+            logger_1.SystemLogger.info("Artifact Delete failed: " + reason);
+            throw deploy_utils_1.DeployStatus.failed;
+        }
+        var resStatus = res.message.statusCode;
+        logger_1.SystemLogger.info(`For Artifact: ${payloadObj.name}: ArtifactDeletionTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
+        const body = await (0, http_1.readBody)(res);
+        if ((0, http_1.isRedirectStatus)(resStatus)) {
+            throw (0, http_1.redirectError)(res);
+        }
+        if (!(0, http_1.isSuccessStatus)(resStatus)) {
+            logger_1.SystemLogger.info(`For Artifact: ${payloadObj.name}: deletion failed: ${body}`);
+            throw deploy_utils_1.DeployStatus.failed;
+        }
+        if (resourceType != artifacts_enum_1.Artifact.managedprivateendpoints) {
+            var location = res.message.headers.location;
+            if (!!location) {
+                let deploymentTrackingRequest = {
+                    url: location,
+                    name: payloadObj.name,
+                    scope: await this.dataPlaneScope()
+                };
+                this.deploymentTrackingRequests.push(deploymentTrackingRequest);
+            }
+        }
+        return deploy_utils_1.DeployStatus.success;
     }
-    async checkStatus(url, name, token) {
+    async checkStatus(url, name, scope) {
         var timeout = new Date().getTime() + (60000 * 20); // 20 Minutes
         var delayMilliSecs = 30000; // 0.5 minute
         while (true) {
@@ -824,15 +870,24 @@ class ArtifactClient {
                 throw new Error("Timeout error in checkStatus");
             }
             var artifactName = '';
+            var token = await (0, auth_1.currentTokenProvider)().getToken(scope);
             var res = await this.client.get(url, this.getHeaders(token));
             var resStatus = res.message.statusCode;
-            var body = await res.readBody();
+            var body = await (0, http_1.readBody)(res);
             logger_1.SystemLogger.info(`For artifact: ${name}: Checkstatus: ${resStatus}; status message: ${res.message.statusMessage}`);
-            if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
+            if ((0, http_1.isRedirectStatus)(resStatus)) {
+                throw (0, http_1.redirectError)(res);
+            }
+            if (!(0, http_1.isSuccessStatus)(resStatus)) {
                 let msg = res.message.statusMessage;
-                let response = JSON.parse(body);
-                if (body != null && response.error != null && response.error.message != null) {
-                    msg = response.error.message;
+                try {
+                    let response = JSON.parse(body);
+                    if (response?.error?.message != null) {
+                        msg = response.error.message;
+                    }
+                }
+                catch {
+                    // A non-JSON error body: report the status alone.
                 }
                 throw new Error(`Checkstatus => status: ${resStatus}; status message: ${msg}`);
             }
@@ -860,7 +915,7 @@ class ArtifactClient {
             }
         }
     }
-    async checkStatusForDelete(url, name, token) {
+    async checkStatusForDelete(url, name, scope) {
         var timeout = new Date().getTime() + (60000 * 20); // 20 Minutes
         var delayMilliSecs = 30000; // 0.5 minute
         while (true) {
@@ -869,14 +924,28 @@ class ArtifactClient {
                 logger_1.SystemLogger.info(`Current time: ' ${currentTime}`);
                 throw new Error("Timeout error in checkStatus");
             }
-            var nbName = '';
+            var token = await (0, auth_1.currentTokenProvider)().getToken(scope);
             var res = await this.client.get(url, this.getHeaders(token));
             var resStatus = res.message.statusCode;
-            var body = await res.readBody();
+            var body = await (0, http_1.readBody)(res);
+            if ((0, http_1.isRedirectStatus)(resStatus)) {
+                throw (0, http_1.redirectError)(res);
+            }
+            // Other 4xx statuses (such as 404 once the operation is gone) end the
+            // wait, as before; auth and server failures must not look like success.
+            if (resStatus == 401 || resStatus == 403 || resStatus >= 500) {
+                throw new Error(`Checkstatus => status: ${resStatus}; status message: ${res.message.statusMessage}${body ? ': ' + body : ''}`);
+            }
             if (body.trim() != "") {
-                let bodyObj = JSON.parse(body);
-                if (bodyObj["status"].toLowerCase() == "failed") {
-                    logger_1.SystemLogger.info(bodyObj["error"]["message"]);
+                let bodyObj;
+                try {
+                    bodyObj = JSON.parse(body);
+                }
+                catch {
+                    throw new Error(`For Artifact: ${name} deletion status was not JSON (status ${resStatus}): ${body}`);
+                }
+                if (bodyObj["status"]?.toLowerCase() == "failed") {
+                    logger_1.SystemLogger.info(bodyObj["error"]?.["message"]);
                     throw new Error(`For Artifact: ${name} deletion failed. ${JSON.stringify(bodyObj)}`);
                 }
             }
@@ -895,7 +964,7 @@ class ArtifactClient {
         var headers = {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
-            'User-Agent': this.client.userAgent?.toString()
+            'User-Agent': http_1.userAgent
         };
         return headers;
     }
@@ -917,6 +986,115 @@ class ArtifactClient {
 }
 exports.ArtifactClient = ArtifactClient;
 //# sourceMappingURL=artifacts_client.js.map
+
+/***/ }),
+
+/***/ 8277:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PENDING_REQUESTS_MESSAGE = void 0;
+exports.guardAgainstSilentExit = guardAgainstSilentExit;
+exports.PENDING_REQUESTS_MESSAGE = 'The action stopped with requests still pending; the deployment may be incomplete. Re-run the job.';
+/**
+ * Node exits 0 when the event loop drains, even if main() never settled. A
+ * promise that never settles must never look like a green run.
+ */
+function guardAgainstSilentExit(proc, hasSettled, setFailed) {
+    proc.on('beforeExit', () => {
+        if (!hasSettled()) {
+            setFailed(exports.PENDING_REQUESTS_MESSAGE);
+            proc.exitCode = 1;
+        }
+    });
+}
+//# sourceMappingURL=exit_guard.js.map
+
+/***/ }),
+
+/***/ 9523:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.httpClient = exports.DATA_PLANE_SOCKET_TIMEOUT_MS = exports.userAgent = void 0;
+exports.createHttpClient = createHttpClient;
+exports.isSuccessStatus = isSuccessStatus;
+exports.isRedirectStatus = isRedirectStatus;
+exports.redirectError = redirectError;
+exports.readBody = readBody;
+exports.permissionHint = permissionHint;
+const http_client_1 = __nccwpck_require__(4844);
+exports.userAgent = 'synapse-github-cicd-deploy-task';
+// Without a socket timeout a stalled connection never settles, so the job
+// runs until the runner kills it. Large workspaces take minutes to answer the
+// database queries, hence 5 minutes for data-plane calls.
+exports.DATA_PLANE_SOCKET_TIMEOUT_MS = 300000;
+// Redirects stay off: every request carries a bearer token, and none of the
+// Azure endpoints used here is expected to redirect.
+function createHttpClient(socketTimeout) {
+    return new http_client_1.HttpClient(exports.userAgent, [], { socketTimeout, allowRedirects: false });
+}
+exports.httpClient = createHttpClient(exports.DATA_PLANE_SOCKET_TIMEOUT_MS);
+function isSuccessStatus(status) {
+    return status === 200 || status === 201 || status === 202;
+}
+function isRedirectStatus(status) {
+    return status !== undefined && status >= 300 && status < 400;
+}
+function redirectError(res) {
+    return new Error(`Unexpected redirect to ${res.message.headers.location ?? 'an unknown location'}; redirects are disabled because every request carries a bearer token.`);
+}
+/**
+ * Reads a response body, always settling. @actions/http-client's own readBody
+ * listens only for data and end, so a connection reset or stalled body leaves
+ * its promise pending forever and the job can exit green with work undone.
+ */
+function readBody(res, idleTimeoutMs = exports.DATA_PLANE_SOCKET_TIMEOUT_MS) {
+    const message = res.message;
+    const host = message.req?.host ?? 'the server';
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        let ended = false;
+        const fail = (reason) => {
+            if (!ended) {
+                ended = true;
+                reject(new Error(`${reason}; re-run the job.`));
+            }
+        };
+        message.on('data', (chunk) => {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        });
+        message.on('end', () => {
+            if (!ended) {
+                ended = true;
+                resolve(Buffer.concat(chunks).toString());
+            }
+        });
+        message.on('error', (err) => fail(`Reading the response from ${host} failed: ${err.message}`));
+        message.on('aborted', () => fail(`Connection closed before the response from ${host} was complete`));
+        message.on('close', () => {
+            if (!message.complete) {
+                fail(`Connection closed before the response from ${host} was complete`);
+            }
+        });
+        message.setTimeout(idleTimeoutMs, () => {
+            const reason = `No data from ${host} for ${Math.round(idleTimeoutMs / 1000)} s`;
+            fail(reason);
+            message.destroy(new Error(reason));
+        });
+    });
+}
+// A 401 or 403 is almost always a missing role, which the raw status does not say.
+function permissionHint(status, role) {
+    return status === 401 || status === 403
+        ? ` The identity is likely missing ${role}; grant it and re-run the job.`
+        : '';
+}
+//# sourceMappingURL=http.js.map
 
 /***/ }),
 
@@ -967,6 +1145,7 @@ const logger_1 = __nccwpck_require__(8993);
 const BundleManager_1 = __nccwpck_require__(8905);
 const artifacts_enum_1 = __nccwpck_require__(8502);
 const OperationsManager_1 = __nccwpck_require__(9355);
+const exit_guard_1 = __nccwpck_require__(8277);
 async function main() {
     logger_1.SystemLogger.setLogger(new logger_1.ActionLogger(true));
     try {
@@ -993,11 +1172,15 @@ async function main() {
         throw new Error(err instanceof Error ? err.message : String(err));
     }
 }
+let settled = false;
+(0, exit_guard_1.guardAgainstSilentExit)(process, () => settled, (message) => core.setFailed(message));
 main()
     .then(() => {
+    settled = true;
     process.exit(0);
 })
     .catch((err) => {
+    settled = true;
     core.setFailed(err);
     process.exit(1);
 });
@@ -1019,7 +1202,7 @@ const arm_template_utils_1 = __nccwpck_require__(918);
 const artifacts_enum_1 = __nccwpck_require__(8502);
 const deploy_utils_1 = __nccwpck_require__(3284);
 const logger_1 = __nccwpck_require__(8993);
-const service_principal_client_utils_1 = __nccwpck_require__(415);
+const arm_1 = __nccwpck_require__(1854);
 const workspace_artifacts_getter_1 = __nccwpck_require__(3935);
 class Orchestrator {
     packageFiles;
@@ -1045,7 +1228,7 @@ class Orchestrator {
             if (!(armTemplateContent && armParameterContent)) {
                 throw new Error('Empty template or parameters file');
             }
-            let targetLocation = await (0, service_principal_client_utils_1.getWorkspaceLocation)(this.artifactClient.getParams(), this.targetWorkspace);
+            let targetLocation = await (0, arm_1.getWorkspaceLocation)(this.artifactClient.getParams(), this.targetWorkspace);
             let canDeployMPE = await (0, workspace_artifacts_getter_1.SKipManagedPE)(this.targetWorkspace, this.environment);
             canDeployMPE = !canDeployMPE && this.deployMPE;
             let artifactsToDeploy = await (0, arm_template_utils_1.getArtifacts)(armParameterContent, armTemplateContent, overrideArmParameters, this.targetWorkspace, targetLocation);
@@ -1871,6 +2054,162 @@ var ExportConstants;
 
 /***/ }),
 
+/***/ 5367:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SIGN_IN_TIMEOUT_MS = void 0;
+exports.appendDefaultScope = appendDefaultScope;
+exports.createCredential = createCredential;
+exports.createTokenProvider = createTokenProvider;
+exports.getTokenProvider = getTokenProvider;
+exports.currentTokenProvider = currentTokenProvider;
+exports.setTokenProvider = setTokenProvider;
+const core = __importStar(__nccwpck_require__(7484));
+const identity_1 = __nccwpck_require__(5261);
+exports.SIGN_IN_TIMEOUT_MS = 60000;
+const FEDERATED_AUDIENCE = 'api://AzureADTokenExchange';
+function appendDefaultScope(url) {
+    return url.replace(/\/+$/, '') + '/.default';
+}
+function requireInputs(mode, inputs, names) {
+    const missing = names.filter(name => !inputs[name]);
+    if (missing.length > 0) {
+        throw new Error(`Missing required input(s) for ${mode} authentication: ${missing.join(', ')}. ` +
+            `Set them on the action and retry.`);
+    }
+}
+/**
+ * Picks the credential for the configured auth mode. Managed identity wins
+ * over federated identity, which wins over a client secret, as before.
+ */
+function createCredential(inputs) {
+    if (inputs.managedIdentity == 'true') {
+        // A client ID selects a user-assigned identity; without one the
+        // system-assigned identity is used.
+        return inputs.clientId
+            ? new identity_1.ManagedIdentityCredential({ clientId: inputs.clientId })
+            : new identity_1.ManagedIdentityCredential();
+    }
+    if (inputs.federatedIdentity == 'true') {
+        requireInputs('federated identity', inputs, ['clientId', 'tenantId']);
+        core.debug(`Authenticating with federated credentials: client ${inputs.clientId}, tenant ${inputs.tenantId}`);
+        return new identity_1.ClientAssertionCredential(inputs.tenantId, inputs.clientId, async () => {
+            try {
+                return await core.getIDToken(FEDERATED_AUDIENCE);
+            }
+            catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                throw new Error('Failed to get the GitHub OIDC token. Ensure the job has `id-token: write` ' +
+                    `permission and the clientId and tenantId inputs are set: ${message}`);
+            }
+        }, { authorityHost: inputs.authorityHost, httpClient: inputs.httpClient });
+    }
+    requireInputs('client secret', inputs, ['clientId', 'clientSecret', 'tenantId']);
+    core.debug(`Authenticating with a client secret: client ${inputs.clientId}, tenant ${inputs.tenantId}`);
+    return new identity_1.ClientSecretCredential(inputs.tenantId, inputs.clientId, inputs.clientSecret, { authorityHost: inputs.authorityHost, httpClient: inputs.httpClient });
+}
+// A sign-in that never answers would otherwise hold the job until the runner
+// kills it.
+async function withTimeout(promise, ms, message) {
+    let timer;
+    const timeout = new Promise((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+    });
+    try {
+        return await Promise.race([promise, timeout]);
+    }
+    finally {
+        clearTimeout(timer);
+    }
+}
+/**
+ * Wraps a credential so that every token it returns is masked in the logs.
+ * The credential caches tokens per scope until shortly before they expire,
+ * so keeping one provider for the run avoids a sign-in per artifact.
+ */
+function createTokenProvider(inputs, credential = createCredential(inputs), signInTimeoutMs = exports.SIGN_IN_TIMEOUT_MS) {
+    const masked = new Set();
+    return {
+        async getToken(scope) {
+            let token;
+            try {
+                const accessToken = await withTimeout(credential.getToken(scope), signInTimeoutMs, `Sign-in to ${inputs.authorityHost} timed out after ${Math.round(signInTimeoutMs / 1000)} s; retry the job.`);
+                if (!accessToken) {
+                    throw new Error('the credential returned no token');
+                }
+                token = accessToken.token;
+            }
+            catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                throw new Error(`Azure authentication failed: ${message}`);
+            }
+            if (!masked.has(token)) {
+                core.setSecret(token);
+                masked.add(token);
+            }
+            return token;
+        }
+    };
+}
+let provider;
+/** Returns the run's token provider, creating it on first use. */
+function getTokenProvider(inputs) {
+    if (!provider) {
+        provider = createTokenProvider(inputs);
+    }
+    return provider;
+}
+/** Returns the provider created by the first sign-in, for later token refreshes. */
+function currentTokenProvider() {
+    if (!provider) {
+        throw new Error('No Azure sign-in has happened yet; this is a bug in the action.');
+    }
+    return provider;
+}
+/** Test seam: install a fake provider, or pass undefined to reset. */
+function setTokenProvider(p) {
+    provider = p;
+}
+//# sourceMappingURL=auth.js.map
+
+/***/ }),
+
 /***/ 1053:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
@@ -1970,8 +2309,7 @@ exports.getRMUrl = getRMUrl;
 exports.getAdEndpointUrl = getAdEndpointUrl;
 exports.getRmEndpointUrl = getRmEndpointUrl;
 const core = __importStar(__nccwpck_require__(7484));
-const service_principal_client_utils_1 = __nccwpck_require__(415);
-const federated_identity_utils_1 = __nccwpck_require__(5484);
+const auth_1 = __nccwpck_require__(5367);
 var DeployStatus;
 (function (DeployStatus) {
     DeployStatus["success"] = "Success";
@@ -1985,40 +2323,48 @@ var Env;
     Env["usnat"] = "Azure US Government";
 })(Env || (exports.Env = Env = {}));
 async function getParams(dataplane = false, env = "") {
+    let environment;
+    let resourceGroup;
+    let clientId;
+    let clientSecret;
+    let subscriptionId;
+    let tenantId;
+    let managedIdentity;
+    let federatedIdentity;
+    let activeDirectoryEndpointUrl;
+    let resourceManagerEndpointUrl;
     try {
-        const env = core.getInput('Environment');
-        var resourceGroup = core.getInput("resourceGroup");
-        var clientId = core.getInput("clientId");
-        var clientSecret = core.getInput("clientSecret");
-        var subscriptionId = core.getInput("subscriptionId");
-        var tenantId = core.getInput("tenantId");
-        var managedIdentity = core.getInput("managedIdentity");
-        var federatedIdentity = core.getInput("federatedIdentity");
-        var activeDirectoryEndpointUrl = getAdEndpointUrl(env);
-        var resourceManagerEndpointUrl = getRmEndpointUrl(env);
+        environment = env || core.getInput('Environment');
+        resourceGroup = core.getInput("resourceGroup");
+        clientId = core.getInput("clientId");
+        clientSecret = core.getInput("clientSecret");
+        subscriptionId = core.getInput("subscriptionId");
+        tenantId = core.getInput("tenantId");
+        managedIdentity = core.getInput("managedIdentity");
+        federatedIdentity = core.getInput("federatedIdentity");
+        activeDirectoryEndpointUrl = getAdEndpointUrl(environment);
+        resourceManagerEndpointUrl = getRmEndpointUrl(environment);
     }
     catch (err) {
-        throw new Error("Unable to parse the secret: " + err);
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error("Unable to read the action inputs: " + message + ". Check the Environment input is one of Azure Public, Azure China or Azure US Government.");
+    }
+    if (clientSecret) {
+        core.setSecret(clientSecret);
     }
     try {
         if (dataplane) {
-            resourceManagerEndpointUrl = await getRMUrl(env);
+            resourceManagerEndpointUrl = await getRMUrl(environment);
         }
-        let bearer;
-        if (managedIdentity == 'true') {
-            bearer = await (0, service_principal_client_utils_1.getManagedIdentityBearer)(resourceManagerEndpointUrl);
-        }
-        else if (federatedIdentity == 'true') {
-            bearer = await (0, federated_identity_utils_1.getAzureFederatedToken)({
-                clientId: clientId,
-                tenantId: tenantId,
-                subscriptionId: subscriptionId,
-                resourceManagerEndpointUrl: resourceManagerEndpointUrl
-            });
-        }
-        else {
-            bearer = await (0, service_principal_client_utils_1.getBearer)(clientId, clientSecret, subscriptionId, tenantId, resourceManagerEndpointUrl, activeDirectoryEndpointUrl);
-        }
+        const tokenProvider = (0, auth_1.getTokenProvider)({
+            clientId,
+            clientSecret,
+            tenantId,
+            managedIdentity,
+            federatedIdentity,
+            authorityHost: activeDirectoryEndpointUrl
+        });
+        const bearer = await tokenProvider.getToken((0, auth_1.appendDefaultScope)(resourceManagerEndpointUrl));
         let params = {
             'clientId': clientId,
             'clientSecret': clientSecret,
@@ -2034,7 +2380,8 @@ async function getParams(dataplane = false, env = "") {
         return params;
     }
     catch (err) {
-        throw new Error("Failed to fetch Bearer: " + err);
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error("Failed to fetch Bearer: " + message);
     }
 }
 async function getRMUrl(env) {
@@ -2074,83 +2421,6 @@ function getRmEndpointUrl(env) {
     }
 }
 //# sourceMappingURL=deploy_utils.js.map
-
-/***/ }),
-
-/***/ 5484:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getAzureFederatedToken = getAzureFederatedToken;
-exports.appendDefaultScope = appendDefaultScope;
-const identity_1 = __nccwpck_require__(5261);
-const core = __importStar(__nccwpck_require__(7484));
-async function getAzureFederatedToken(config) {
-    const { clientId, tenantId, subscriptionId, resourceManagerEndpointUrl } = config;
-    if (!clientId || !tenantId || !subscriptionId) {
-        throw new Error(`Missing required Azure configuration. Ensure AZURE_CLIENT_ID, AZURE_TENANT_ID, and AZURE_SUBSCRIPTION_ID are set`);
-    }
-    core.info("Authenticating to Azure using federated credentials...");
-    core.info(`Client ID: ${clientId}`);
-    core.info(`Tenant ID: ${tenantId}`);
-    core.info(`Subscription ID: ${subscriptionId}`);
-    // Get the GitHub OIDC token
-    const githubToken = await core.getIDToken("api://AzureADTokenExchange");
-    if (!githubToken) {
-        throw new Error("Failed to get GitHub OIDC token. Ensure id-token: write permission is set in workflow.");
-    }
-    core.info("Retrieved GitHub OIDC token");
-    // Create a credential that uses the GitHub OIDC token as a client assertion
-    const credential = new identity_1.ClientAssertionCredential(tenantId, clientId, async () => githubToken);
-    try {
-        const res = await credential.getToken(appendDefaultScope(resourceManagerEndpointUrl));
-        core.info("Successfully authenticated to Azure using federated credentials");
-        return res.token;
-    }
-    catch (error) {
-        core.error("Failed to authenticate to Azure");
-        throw new Error(`Azure authentication failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-}
-function appendDefaultScope(url) {
-    return url.replace(/\/+$/, "") + "/.default";
-}
-//# sourceMappingURL=federated_identity_utils.js.map
 
 /***/ }),
 
@@ -2248,142 +2518,6 @@ exports.ActionLogger = ActionLogger;
 
 /***/ }),
 
-/***/ 415:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-// Copyright (c) Microsoft Corporation.
-// Licensed under the MIT license.
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getBearer = getBearer;
-exports.getManagedIdentityBearer = getManagedIdentityBearer;
-exports.getWorkspaceLocation = getWorkspaceLocation;
-const httpClient = __importStar(__nccwpck_require__(6184));
-const deploy_utils_1 = __nccwpck_require__(3284);
-const logger_1 = __nccwpck_require__(8993);
-const userAgent = 'synapse-github-cicd-deploy-task';
-const requestOptions = {};
-const client = new httpClient.HttpClient(userAgent, undefined, requestOptions);
-async function getBearer(clientId, clientSecret, subscriptionId, tenantId, resourceManagerEndpointUrl, activeDirectoryEndpointUrl) {
-    try {
-        return new Promise((resolve, reject) => {
-            var url = `${activeDirectoryEndpointUrl}${tenantId}/oauth2/token`;
-            var headers = {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            };
-            let requestBody = `client_id=${clientId}&client_secret=${clientSecret}&resource=${encodeURIComponent(resourceManagerEndpointUrl)}&subscription_id=${subscriptionId}&grant_type=client_credentials`;
-            client.post(url, requestBody, headers).then(async (res) => {
-                var resStatus = res.message.statusCode;
-                if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                    logger_1.SystemLogger.info(`Unable to fetch service principal token, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                    let error = await res.readBody();
-                    logger_1.SystemLogger.info(error);
-                    return reject(deploy_utils_1.DeployStatus.failed);
-                }
-                logger_1.SystemLogger.info(`Able to fetch service principal token: ${resStatus}; status message: ${res.message.statusMessage}`);
-                let body = await res.readBody();
-                return resolve(JSON.parse(body)["access_token"]);
-            });
-        });
-    }
-    catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error("Unable to fetch the service principal token: " + message);
-    }
-}
-async function getManagedIdentityBearer(resourceManagerEndpointUrl) {
-    try {
-        return new Promise((resolve, reject) => {
-            var url = `http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=${resourceManagerEndpointUrl}`;
-            var headers = {
-                'Metadata': 'true'
-            };
-            client.get(url, headers).then(async (res) => {
-                var resStatus = res.message.statusCode;
-                if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                    logger_1.SystemLogger.info(`Unable to fetch managed identity bearer token, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                    let error = await res.readBody();
-                    logger_1.SystemLogger.info(error);
-                    return reject(deploy_utils_1.DeployStatus.failed);
-                }
-                logger_1.SystemLogger.info(`Able to fetch managed identity bearer token: ${resStatus}; status message: ${res.message.statusMessage}`);
-                let body = await res.readBody();
-                return resolve(JSON.parse(body)["access_token"]);
-            });
-        });
-    }
-    catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error("Unable to fetch the managed identity bearer token: " + message);
-    }
-}
-async function getWorkspaceLocation(params, targetWorkspace) {
-    try {
-        return new Promise((resolve, reject) => {
-            let resourceManagerEndpointUrl = params.resourceManagerEndpointUrl;
-            let subscriptionId = params.subscriptionId;
-            let resourceGroup = params.resourceGroup;
-            let headers = {
-                'Authorization': 'Bearer ' + params.bearer
-            };
-            let url = `${resourceManagerEndpointUrl}subscriptions/${subscriptionId}/` +
-                `resourceGroups/${resourceGroup}/providers/Microsoft.Synapse/workspaces/` +
-                `${targetWorkspace}?api-version=2019-06-01-preview`;
-            client.get(url, headers).then(async (res) => {
-                let resStatus = res.message.statusCode;
-                if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                    logger_1.SystemLogger.info(`Unable to fetch location of workspace, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                    return reject(deploy_utils_1.DeployStatus.failed);
-                }
-                logger_1.SystemLogger.info(`Able to fetch location of workspace: ${resStatus}; status message: ${res.message.statusMessage}`);
-                let body = await res.readBody();
-                return resolve(JSON.parse(body)['location']);
-            });
-        });
-    }
-    catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error("Unable to fetch the location of the workspace: " + message);
-    }
-}
-//# sourceMappingURL=service_principal_client_utils.js.map
-
-/***/ }),
-
 /***/ 3935:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -2433,14 +2567,11 @@ exports.getDependentsFromArtifactFromWorkspace = getDependentsFromArtifactFromWo
 exports.SKipManagedPE = SKipManagedPE;
 const artifacts_client_1 = __nccwpck_require__(8281);
 const deployUtils = __importStar(__nccwpck_require__(3284));
-const httpClient = __importStar(__nccwpck_require__(6184));
+const http_1 = __nccwpck_require__(9523);
 const arm_template_utils_1 = __nccwpck_require__(918);
 const artifacts_enum_1 = __nccwpck_require__(8502);
 const logger_1 = __nccwpck_require__(8993);
 const common_utils_1 = __nccwpck_require__(1053);
-const userAgent = 'synapse-github-cicd-deploy-task';
-const requestOptions = {};
-const client = new httpClient.HttpClient(userAgent, undefined, requestOptions);
 const artifactTypesToQuery = [
     artifacts_enum_1.Artifact.credential,
     artifacts_enum_1.Artifact.dataflow,
@@ -2463,31 +2594,35 @@ async function getArtifactsFromWorkspaceOfType(artifactTypeToQuery, targetWorksp
     var headers = {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'User-Agent': userAgent
+        'User-Agent': http_1.userAgent
     };
     let artifacts = new Array();
     var resourceUrl = getResourceFromWorkspaceUrl(targetWorkspaceName, environment, artifactTypeToQuery.toString());
     let moreResult = true;
     while (moreResult) {
-        var resp = new Promise((resolve, reject) => {
-            client.get(resourceUrl, headers).then(async (res) => {
-                var resStatus = res.message.statusCode;
-                if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                    logger_1.SystemLogger.info(`Failed to fetch workspace info, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                    return reject("Failed to fetch workspace info " + res.message.statusMessage);
-                }
-                var body = await res.readBody();
-                if (!body) {
-                    logger_1.SystemLogger.info("No response body for url: " + resourceUrl);
-                    return reject("Failed to fetch workspace info response");
-                }
-                return resolve(body);
-            }, (reason) => {
-                logger_1.SystemLogger.info('Failed to fetch artifacts from workspace: ' + reason);
-                return reject(deployUtils.DeployStatus.failed);
-            });
-        });
-        var resourcesString = await resp;
+        var resourcesString;
+        try {
+            var res = await http_1.httpClient.get(resourceUrl, headers);
+            var resStatus = res.message.statusCode;
+            resourcesString = await (0, http_1.readBody)(res);
+            if ((0, http_1.isRedirectStatus)(resStatus)) {
+                throw (0, http_1.redirectError)(res);
+            }
+            if (!(0, http_1.isSuccessStatus)(resStatus)) {
+                logger_1.SystemLogger.info(`Failed to fetch workspace info, status: ${resStatus}; status message: ${res.message.statusMessage}`);
+                throw new Error(`Failed to fetch ${artifactTypeToQuery} artifacts from the workspace: status ${resStatus}: ${resourcesString}.` +
+                    (0, http_1.permissionHint)(resStatus, 'a Synapse RBAC role that can read artifacts (for example Synapse Artifact User) on the workspace'));
+            }
+            if (!resourcesString) {
+                logger_1.SystemLogger.info("No response body for url: " + resourceUrl);
+                throw new Error("Failed to fetch workspace info response: the response body was empty.");
+            }
+        }
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            logger_1.SystemLogger.info('Failed to fetch artifacts from workspace: ' + message);
+            throw new Error(message);
+        }
         var resourcesJson = JSON.parse(resourcesString);
         const list = resourcesJson.value ?? resourcesJson?.items;
         moreResult = false;
@@ -2762,21 +2897,16 @@ async function SKipManagedPE(targetWorkspaceName, environment) {
     var headers = {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        'User-Agent': userAgent
+        'User-Agent': http_1.userAgent
     };
     var resourceUrl = getResourceFromWorkspaceUrl(targetWorkspaceName, environment, artifacts_enum_1.Artifact.managedprivateendpoints);
-    var resp = new Promise((resolve, reject) => {
-        client.get(resourceUrl, headers).then(async (res) => {
-            var resStatus = res.message.statusCode;
-            if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                let body = await res.readBody();
-                if (body.includes("does not have a managed virtual network associated"))
-                    return resolve(true);
-            }
-            return resolve(false);
-        });
-    });
-    return resp;
+    const res = await http_1.httpClient.get(resourceUrl, headers);
+    const body = await (0, http_1.readBody)(res);
+    if (!(0, http_1.isSuccessStatus)(res.message.statusCode)) {
+        if (body.includes("does not have a managed virtual network associated"))
+            return true;
+    }
+    return false;
 }
 function SkipDatabase(artifactJsonContent) {
     let artifactJson = JSON.parse(artifactJsonContent);
@@ -2806,30 +2936,28 @@ async function GetDatabasesWithChildren(databases, targetWorkspaceName, environm
                     let headers = {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json',
-                        'User-Agent': userAgent
+                        'User-Agent': http_1.userAgent
                     };
-                    await client.get(requestURI, headers).then(async (res) => {
-                        let resStatus = res.message.statusCode;
-                        if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                            console.info(`Failed to fetch database ${db.name} info, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                            let body = await res.readBody();
-                            throw new Error("Failed to fetch database info :" + body);
-                        }
-                        let body = await res.readBody();
-                        let childrenObj = JSON.parse(body)["items"];
-                        for (let child of childrenObj) {
-                            let childObj = {
-                                name: child["Name"],
-                                type: action
-                            };
-                            children.push(childObj);
-                        }
-                        let bodyObj = JSON.parse(body);
-                        if (bodyObj.hasOwnProperty('continuationToken')) {
-                            requestURI = bodyObj['continuationToken'];
-                            fetchMore = true;
-                        }
-                    });
+                    const res = await http_1.httpClient.get(requestURI, headers);
+                    let resStatus = res.message.statusCode;
+                    let body = await (0, http_1.readBody)(res);
+                    if (!(0, http_1.isSuccessStatus)(resStatus)) {
+                        console.info(`Failed to fetch database ${db.name} info, status: ${resStatus}; status message: ${res.message.statusMessage}`);
+                        throw new Error(`Failed to fetch database info: status ${resStatus}: ${body}.` + (0, http_1.permissionHint)(resStatus, 'a Synapse RBAC role that can read artifacts on the workspace'));
+                    }
+                    let childrenObj = JSON.parse(body)["items"];
+                    for (let child of childrenObj) {
+                        let childObj = {
+                            name: child["Name"],
+                            type: action
+                        };
+                        children.push(childObj);
+                    }
+                    let bodyObj = JSON.parse(body);
+                    if (bodyObj.hasOwnProperty('continuationToken')) {
+                        requestURI = bodyObj['continuationToken'];
+                        fetchMore = true;
+                    }
                 }
             }
             let dbWithChildren = {
@@ -2841,7 +2969,7 @@ async function GetDatabasesWithChildren(databases, targetWorkspaceName, environm
         return databasesWithChildren;
     }
     catch (err) {
-        throw new Error(JSON.stringify(err));
+        throw new Error(err instanceof Error ? err.message : JSON.stringify(err));
     }
 }
 //# sourceMappingURL=workspace_artifacts_getter.js.map
@@ -10951,84 +11079,6 @@ bufferEq.restore = function() {
 
 /***/ }),
 
-/***/ 2856:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var GetIntrinsic = __nccwpck_require__(470);
-
-var callBind = __nccwpck_require__(3844);
-
-var $indexOf = callBind(GetIntrinsic('String.prototype.indexOf'));
-
-module.exports = function callBoundIntrinsic(name, allowMissing) {
-	var intrinsic = GetIntrinsic(name, !!allowMissing);
-	if (typeof intrinsic === 'function' && $indexOf(name, '.prototype.') > -1) {
-		return callBind(intrinsic);
-	}
-	return intrinsic;
-};
-
-
-/***/ }),
-
-/***/ 3844:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var bind = __nccwpck_require__(7564);
-var GetIntrinsic = __nccwpck_require__(470);
-
-var $apply = GetIntrinsic('%Function.prototype.apply%');
-var $call = GetIntrinsic('%Function.prototype.call%');
-var $reflectApply = GetIntrinsic('%Reflect.apply%', true) || bind.call($call, $apply);
-
-var $gOPD = GetIntrinsic('%Object.getOwnPropertyDescriptor%', true);
-var $defineProperty = GetIntrinsic('%Object.defineProperty%', true);
-var $max = GetIntrinsic('%Math.max%');
-
-if ($defineProperty) {
-	try {
-		$defineProperty({}, 'a', { value: 1 });
-	} catch (e) {
-		// IE 8 has a broken defineProperty
-		$defineProperty = null;
-	}
-}
-
-module.exports = function callBind(originalFunction) {
-	var func = $reflectApply(bind, $call, arguments);
-	if ($gOPD && $defineProperty) {
-		var desc = $gOPD(func, 'length');
-		if (desc.configurable) {
-			// original length, plus the receiver, minus any additional arguments (after the receiver)
-			$defineProperty(
-				func,
-				'length',
-				{ value: 1 + $max(0, originalFunction.length - (arguments.length - 1)) }
-			);
-		}
-	}
-	return func;
-};
-
-var applyBind = function applyBind() {
-	return $reflectApply(bind, $apply, arguments);
-};
-
-if ($defineProperty) {
-	$defineProperty(module.exports, 'apply', { value: applyBind });
-} else {
-	module.exports.apply = applyBind;
-}
-
-
-/***/ }),
-
 /***/ 6867:
 /***/ ((module) => {
 
@@ -12285,501 +12335,6 @@ function getParamBytesForAlg(alg) {
 }
 
 module.exports = getParamBytesForAlg;
-
-
-/***/ }),
-
-/***/ 9808:
-/***/ ((module) => {
-
-"use strict";
-
-
-/* eslint no-invalid-this: 1 */
-
-var ERROR_MESSAGE = 'Function.prototype.bind called on incompatible ';
-var slice = Array.prototype.slice;
-var toStr = Object.prototype.toString;
-var funcType = '[object Function]';
-
-module.exports = function bind(that) {
-    var target = this;
-    if (typeof target !== 'function' || toStr.call(target) !== funcType) {
-        throw new TypeError(ERROR_MESSAGE + target);
-    }
-    var args = slice.call(arguments, 1);
-
-    var bound;
-    var binder = function () {
-        if (this instanceof bound) {
-            var result = target.apply(
-                this,
-                args.concat(slice.call(arguments))
-            );
-            if (Object(result) === result) {
-                return result;
-            }
-            return this;
-        } else {
-            return target.apply(
-                that,
-                args.concat(slice.call(arguments))
-            );
-        }
-    };
-
-    var boundLength = Math.max(0, target.length - args.length);
-    var boundArgs = [];
-    for (var i = 0; i < boundLength; i++) {
-        boundArgs.push('$' + i);
-    }
-
-    bound = Function('binder', 'return function (' + boundArgs.join(',') + '){ return binder.apply(this,arguments); }')(binder);
-
-    if (target.prototype) {
-        var Empty = function Empty() {};
-        Empty.prototype = target.prototype;
-        bound.prototype = new Empty();
-        Empty.prototype = null;
-    }
-
-    return bound;
-};
-
-
-/***/ }),
-
-/***/ 7564:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var implementation = __nccwpck_require__(9808);
-
-module.exports = Function.prototype.bind || implementation;
-
-
-/***/ }),
-
-/***/ 470:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var undefined;
-
-var $SyntaxError = SyntaxError;
-var $Function = Function;
-var $TypeError = TypeError;
-
-// eslint-disable-next-line consistent-return
-var getEvalledConstructor = function (expressionSyntax) {
-	try {
-		return $Function('"use strict"; return (' + expressionSyntax + ').constructor;')();
-	} catch (e) {}
-};
-
-var $gOPD = Object.getOwnPropertyDescriptor;
-if ($gOPD) {
-	try {
-		$gOPD({}, '');
-	} catch (e) {
-		$gOPD = null; // this is IE 8, which has a broken gOPD
-	}
-}
-
-var throwTypeError = function () {
-	throw new $TypeError();
-};
-var ThrowTypeError = $gOPD
-	? (function () {
-		try {
-			// eslint-disable-next-line no-unused-expressions, no-caller, no-restricted-properties
-			arguments.callee; // IE 8 does not throw here
-			return throwTypeError;
-		} catch (calleeThrows) {
-			try {
-				// IE 8 throws on Object.getOwnPropertyDescriptor(arguments, '')
-				return $gOPD(arguments, 'callee').get;
-			} catch (gOPDthrows) {
-				return throwTypeError;
-			}
-		}
-	}())
-	: throwTypeError;
-
-var hasSymbols = __nccwpck_require__(3336)();
-
-var getProto = Object.getPrototypeOf || function (x) { return x.__proto__; }; // eslint-disable-line no-proto
-
-var needsEval = {};
-
-var TypedArray = typeof Uint8Array === 'undefined' ? undefined : getProto(Uint8Array);
-
-var INTRINSICS = {
-	'%AggregateError%': typeof AggregateError === 'undefined' ? undefined : AggregateError,
-	'%Array%': Array,
-	'%ArrayBuffer%': typeof ArrayBuffer === 'undefined' ? undefined : ArrayBuffer,
-	'%ArrayIteratorPrototype%': hasSymbols ? getProto([][Symbol.iterator]()) : undefined,
-	'%AsyncFromSyncIteratorPrototype%': undefined,
-	'%AsyncFunction%': needsEval,
-	'%AsyncGenerator%': needsEval,
-	'%AsyncGeneratorFunction%': needsEval,
-	'%AsyncIteratorPrototype%': needsEval,
-	'%Atomics%': typeof Atomics === 'undefined' ? undefined : Atomics,
-	'%BigInt%': typeof BigInt === 'undefined' ? undefined : BigInt,
-	'%Boolean%': Boolean,
-	'%DataView%': typeof DataView === 'undefined' ? undefined : DataView,
-	'%Date%': Date,
-	'%decodeURI%': decodeURI,
-	'%decodeURIComponent%': decodeURIComponent,
-	'%encodeURI%': encodeURI,
-	'%encodeURIComponent%': encodeURIComponent,
-	'%Error%': Error,
-	'%eval%': eval, // eslint-disable-line no-eval
-	'%EvalError%': EvalError,
-	'%Float32Array%': typeof Float32Array === 'undefined' ? undefined : Float32Array,
-	'%Float64Array%': typeof Float64Array === 'undefined' ? undefined : Float64Array,
-	'%FinalizationRegistry%': typeof FinalizationRegistry === 'undefined' ? undefined : FinalizationRegistry,
-	'%Function%': $Function,
-	'%GeneratorFunction%': needsEval,
-	'%Int8Array%': typeof Int8Array === 'undefined' ? undefined : Int8Array,
-	'%Int16Array%': typeof Int16Array === 'undefined' ? undefined : Int16Array,
-	'%Int32Array%': typeof Int32Array === 'undefined' ? undefined : Int32Array,
-	'%isFinite%': isFinite,
-	'%isNaN%': isNaN,
-	'%IteratorPrototype%': hasSymbols ? getProto(getProto([][Symbol.iterator]())) : undefined,
-	'%JSON%': typeof JSON === 'object' ? JSON : undefined,
-	'%Map%': typeof Map === 'undefined' ? undefined : Map,
-	'%MapIteratorPrototype%': typeof Map === 'undefined' || !hasSymbols ? undefined : getProto(new Map()[Symbol.iterator]()),
-	'%Math%': Math,
-	'%Number%': Number,
-	'%Object%': Object,
-	'%parseFloat%': parseFloat,
-	'%parseInt%': parseInt,
-	'%Promise%': typeof Promise === 'undefined' ? undefined : Promise,
-	'%Proxy%': typeof Proxy === 'undefined' ? undefined : Proxy,
-	'%RangeError%': RangeError,
-	'%ReferenceError%': ReferenceError,
-	'%Reflect%': typeof Reflect === 'undefined' ? undefined : Reflect,
-	'%RegExp%': RegExp,
-	'%Set%': typeof Set === 'undefined' ? undefined : Set,
-	'%SetIteratorPrototype%': typeof Set === 'undefined' || !hasSymbols ? undefined : getProto(new Set()[Symbol.iterator]()),
-	'%SharedArrayBuffer%': typeof SharedArrayBuffer === 'undefined' ? undefined : SharedArrayBuffer,
-	'%String%': String,
-	'%StringIteratorPrototype%': hasSymbols ? getProto(''[Symbol.iterator]()) : undefined,
-	'%Symbol%': hasSymbols ? Symbol : undefined,
-	'%SyntaxError%': $SyntaxError,
-	'%ThrowTypeError%': ThrowTypeError,
-	'%TypedArray%': TypedArray,
-	'%TypeError%': $TypeError,
-	'%Uint8Array%': typeof Uint8Array === 'undefined' ? undefined : Uint8Array,
-	'%Uint8ClampedArray%': typeof Uint8ClampedArray === 'undefined' ? undefined : Uint8ClampedArray,
-	'%Uint16Array%': typeof Uint16Array === 'undefined' ? undefined : Uint16Array,
-	'%Uint32Array%': typeof Uint32Array === 'undefined' ? undefined : Uint32Array,
-	'%URIError%': URIError,
-	'%WeakMap%': typeof WeakMap === 'undefined' ? undefined : WeakMap,
-	'%WeakRef%': typeof WeakRef === 'undefined' ? undefined : WeakRef,
-	'%WeakSet%': typeof WeakSet === 'undefined' ? undefined : WeakSet
-};
-
-var doEval = function doEval(name) {
-	var value;
-	if (name === '%AsyncFunction%') {
-		value = getEvalledConstructor('async function () {}');
-	} else if (name === '%GeneratorFunction%') {
-		value = getEvalledConstructor('function* () {}');
-	} else if (name === '%AsyncGeneratorFunction%') {
-		value = getEvalledConstructor('async function* () {}');
-	} else if (name === '%AsyncGenerator%') {
-		var fn = doEval('%AsyncGeneratorFunction%');
-		if (fn) {
-			value = fn.prototype;
-		}
-	} else if (name === '%AsyncIteratorPrototype%') {
-		var gen = doEval('%AsyncGenerator%');
-		if (gen) {
-			value = getProto(gen.prototype);
-		}
-	}
-
-	INTRINSICS[name] = value;
-
-	return value;
-};
-
-var LEGACY_ALIASES = {
-	'%ArrayBufferPrototype%': ['ArrayBuffer', 'prototype'],
-	'%ArrayPrototype%': ['Array', 'prototype'],
-	'%ArrayProto_entries%': ['Array', 'prototype', 'entries'],
-	'%ArrayProto_forEach%': ['Array', 'prototype', 'forEach'],
-	'%ArrayProto_keys%': ['Array', 'prototype', 'keys'],
-	'%ArrayProto_values%': ['Array', 'prototype', 'values'],
-	'%AsyncFunctionPrototype%': ['AsyncFunction', 'prototype'],
-	'%AsyncGenerator%': ['AsyncGeneratorFunction', 'prototype'],
-	'%AsyncGeneratorPrototype%': ['AsyncGeneratorFunction', 'prototype', 'prototype'],
-	'%BooleanPrototype%': ['Boolean', 'prototype'],
-	'%DataViewPrototype%': ['DataView', 'prototype'],
-	'%DatePrototype%': ['Date', 'prototype'],
-	'%ErrorPrototype%': ['Error', 'prototype'],
-	'%EvalErrorPrototype%': ['EvalError', 'prototype'],
-	'%Float32ArrayPrototype%': ['Float32Array', 'prototype'],
-	'%Float64ArrayPrototype%': ['Float64Array', 'prototype'],
-	'%FunctionPrototype%': ['Function', 'prototype'],
-	'%Generator%': ['GeneratorFunction', 'prototype'],
-	'%GeneratorPrototype%': ['GeneratorFunction', 'prototype', 'prototype'],
-	'%Int8ArrayPrototype%': ['Int8Array', 'prototype'],
-	'%Int16ArrayPrototype%': ['Int16Array', 'prototype'],
-	'%Int32ArrayPrototype%': ['Int32Array', 'prototype'],
-	'%JSONParse%': ['JSON', 'parse'],
-	'%JSONStringify%': ['JSON', 'stringify'],
-	'%MapPrototype%': ['Map', 'prototype'],
-	'%NumberPrototype%': ['Number', 'prototype'],
-	'%ObjectPrototype%': ['Object', 'prototype'],
-	'%ObjProto_toString%': ['Object', 'prototype', 'toString'],
-	'%ObjProto_valueOf%': ['Object', 'prototype', 'valueOf'],
-	'%PromisePrototype%': ['Promise', 'prototype'],
-	'%PromiseProto_then%': ['Promise', 'prototype', 'then'],
-	'%Promise_all%': ['Promise', 'all'],
-	'%Promise_reject%': ['Promise', 'reject'],
-	'%Promise_resolve%': ['Promise', 'resolve'],
-	'%RangeErrorPrototype%': ['RangeError', 'prototype'],
-	'%ReferenceErrorPrototype%': ['ReferenceError', 'prototype'],
-	'%RegExpPrototype%': ['RegExp', 'prototype'],
-	'%SetPrototype%': ['Set', 'prototype'],
-	'%SharedArrayBufferPrototype%': ['SharedArrayBuffer', 'prototype'],
-	'%StringPrototype%': ['String', 'prototype'],
-	'%SymbolPrototype%': ['Symbol', 'prototype'],
-	'%SyntaxErrorPrototype%': ['SyntaxError', 'prototype'],
-	'%TypedArrayPrototype%': ['TypedArray', 'prototype'],
-	'%TypeErrorPrototype%': ['TypeError', 'prototype'],
-	'%Uint8ArrayPrototype%': ['Uint8Array', 'prototype'],
-	'%Uint8ClampedArrayPrototype%': ['Uint8ClampedArray', 'prototype'],
-	'%Uint16ArrayPrototype%': ['Uint16Array', 'prototype'],
-	'%Uint32ArrayPrototype%': ['Uint32Array', 'prototype'],
-	'%URIErrorPrototype%': ['URIError', 'prototype'],
-	'%WeakMapPrototype%': ['WeakMap', 'prototype'],
-	'%WeakSetPrototype%': ['WeakSet', 'prototype']
-};
-
-var bind = __nccwpck_require__(7564);
-var hasOwn = __nccwpck_require__(685);
-var $concat = bind.call(Function.call, Array.prototype.concat);
-var $spliceApply = bind.call(Function.apply, Array.prototype.splice);
-var $replace = bind.call(Function.call, String.prototype.replace);
-var $strSlice = bind.call(Function.call, String.prototype.slice);
-
-/* adapted from https://github.com/lodash/lodash/blob/4.17.15/dist/lodash.js#L6735-L6744 */
-var rePropName = /[^%.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|%$))/g;
-var reEscapeChar = /\\(\\)?/g; /** Used to match backslashes in property paths. */
-var stringToPath = function stringToPath(string) {
-	var first = $strSlice(string, 0, 1);
-	var last = $strSlice(string, -1);
-	if (first === '%' && last !== '%') {
-		throw new $SyntaxError('invalid intrinsic syntax, expected closing `%`');
-	} else if (last === '%' && first !== '%') {
-		throw new $SyntaxError('invalid intrinsic syntax, expected opening `%`');
-	}
-	var result = [];
-	$replace(string, rePropName, function (match, number, quote, subString) {
-		result[result.length] = quote ? $replace(subString, reEscapeChar, '$1') : number || match;
-	});
-	return result;
-};
-/* end adaptation */
-
-var getBaseIntrinsic = function getBaseIntrinsic(name, allowMissing) {
-	var intrinsicName = name;
-	var alias;
-	if (hasOwn(LEGACY_ALIASES, intrinsicName)) {
-		alias = LEGACY_ALIASES[intrinsicName];
-		intrinsicName = '%' + alias[0] + '%';
-	}
-
-	if (hasOwn(INTRINSICS, intrinsicName)) {
-		var value = INTRINSICS[intrinsicName];
-		if (value === needsEval) {
-			value = doEval(intrinsicName);
-		}
-		if (typeof value === 'undefined' && !allowMissing) {
-			throw new $TypeError('intrinsic ' + name + ' exists, but is not available. Please file an issue!');
-		}
-
-		return {
-			alias: alias,
-			name: intrinsicName,
-			value: value
-		};
-	}
-
-	throw new $SyntaxError('intrinsic ' + name + ' does not exist!');
-};
-
-module.exports = function GetIntrinsic(name, allowMissing) {
-	if (typeof name !== 'string' || name.length === 0) {
-		throw new $TypeError('intrinsic name must be a non-empty string');
-	}
-	if (arguments.length > 1 && typeof allowMissing !== 'boolean') {
-		throw new $TypeError('"allowMissing" argument must be a boolean');
-	}
-
-	var parts = stringToPath(name);
-	var intrinsicBaseName = parts.length > 0 ? parts[0] : '';
-
-	var intrinsic = getBaseIntrinsic('%' + intrinsicBaseName + '%', allowMissing);
-	var intrinsicRealName = intrinsic.name;
-	var value = intrinsic.value;
-	var skipFurtherCaching = false;
-
-	var alias = intrinsic.alias;
-	if (alias) {
-		intrinsicBaseName = alias[0];
-		$spliceApply(parts, $concat([0, 1], alias));
-	}
-
-	for (var i = 1, isOwn = true; i < parts.length; i += 1) {
-		var part = parts[i];
-		var first = $strSlice(part, 0, 1);
-		var last = $strSlice(part, -1);
-		if (
-			(
-				(first === '"' || first === "'" || first === '`')
-				|| (last === '"' || last === "'" || last === '`')
-			)
-			&& first !== last
-		) {
-			throw new $SyntaxError('property names with quotes must have matching quotes');
-		}
-		if (part === 'constructor' || !isOwn) {
-			skipFurtherCaching = true;
-		}
-
-		intrinsicBaseName += '.' + part;
-		intrinsicRealName = '%' + intrinsicBaseName + '%';
-
-		if (hasOwn(INTRINSICS, intrinsicRealName)) {
-			value = INTRINSICS[intrinsicRealName];
-		} else if (value != null) {
-			if (!(part in value)) {
-				if (!allowMissing) {
-					throw new $TypeError('base intrinsic for ' + name + ' exists, but the property is not available.');
-				}
-				return void undefined;
-			}
-			if ($gOPD && (i + 1) >= parts.length) {
-				var desc = $gOPD(value, part);
-				isOwn = !!desc;
-
-				// By convention, when a data property is converted to an accessor
-				// property to emulate a data property that does not suffer from
-				// the override mistake, that accessor's getter is marked with
-				// an `originalValue` property. Here, when we detect this, we
-				// uphold the illusion by pretending to see that original data
-				// property, i.e., returning the value rather than the getter
-				// itself.
-				if (isOwn && 'get' in desc && !('originalValue' in desc.get)) {
-					value = desc.get;
-				} else {
-					value = value[part];
-				}
-			} else {
-				isOwn = hasOwn(value, part);
-				value = value[part];
-			}
-
-			if (isOwn && !skipFurtherCaching) {
-				INTRINSICS[intrinsicRealName] = value;
-			}
-		}
-	}
-	return value;
-};
-
-
-/***/ }),
-
-/***/ 3336:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var origSymbol = typeof Symbol !== 'undefined' && Symbol;
-var hasSymbolSham = __nccwpck_require__(1114);
-
-module.exports = function hasNativeSymbols() {
-	if (typeof origSymbol !== 'function') { return false; }
-	if (typeof Symbol !== 'function') { return false; }
-	if (typeof origSymbol('foo') !== 'symbol') { return false; }
-	if (typeof Symbol('bar') !== 'symbol') { return false; }
-
-	return hasSymbolSham();
-};
-
-
-/***/ }),
-
-/***/ 1114:
-/***/ ((module) => {
-
-"use strict";
-
-
-/* eslint complexity: [2, 18], max-statements: [2, 33] */
-module.exports = function hasSymbols() {
-	if (typeof Symbol !== 'function' || typeof Object.getOwnPropertySymbols !== 'function') { return false; }
-	if (typeof Symbol.iterator === 'symbol') { return true; }
-
-	var obj = {};
-	var sym = Symbol('test');
-	var symObj = Object(sym);
-	if (typeof sym === 'string') { return false; }
-
-	if (Object.prototype.toString.call(sym) !== '[object Symbol]') { return false; }
-	if (Object.prototype.toString.call(symObj) !== '[object Symbol]') { return false; }
-
-	// temp disabled per https://github.com/ljharb/object.assign/issues/17
-	// if (sym instanceof Symbol) { return false; }
-	// temp disabled per https://github.com/WebReflection/get-own-property-symbols/issues/4
-	// if (!(symObj instanceof Symbol)) { return false; }
-
-	// if (typeof Symbol.prototype.toString !== 'function') { return false; }
-	// if (String(sym) !== Symbol.prototype.toString.call(sym)) { return false; }
-
-	var symVal = 42;
-	obj[sym] = symVal;
-	for (sym in obj) { return false; } // eslint-disable-line no-restricted-syntax, no-unreachable-loop
-	if (typeof Object.keys === 'function' && Object.keys(obj).length !== 0) { return false; }
-
-	if (typeof Object.getOwnPropertyNames === 'function' && Object.getOwnPropertyNames(obj).length !== 0) { return false; }
-
-	var syms = Object.getOwnPropertySymbols(obj);
-	if (syms.length !== 1 || syms[0] !== sym) { return false; }
-
-	if (!Object.prototype.propertyIsEnumerable.call(obj, sym)) { return false; }
-
-	if (typeof Object.getOwnPropertyDescriptor === 'function') {
-		var descriptor = Object.getOwnPropertyDescriptor(obj, sym);
-		if (descriptor.value !== symVal || descriptor.enumerable !== true) { return false; }
-	}
-
-	return true;
-};
-
-
-/***/ }),
-
-/***/ 685:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var bind = __nccwpck_require__(7564);
-
-module.exports = bind.call(Function.call, Object.prototype.hasOwnProperty);
 
 
 /***/ }),
@@ -19067,1298 +18622,6 @@ module.exports = once;
 
 /***/ }),
 
-/***/ 506:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var hasMap = typeof Map === 'function' && Map.prototype;
-var mapSizeDescriptor = Object.getOwnPropertyDescriptor && hasMap ? Object.getOwnPropertyDescriptor(Map.prototype, 'size') : null;
-var mapSize = hasMap && mapSizeDescriptor && typeof mapSizeDescriptor.get === 'function' ? mapSizeDescriptor.get : null;
-var mapForEach = hasMap && Map.prototype.forEach;
-var hasSet = typeof Set === 'function' && Set.prototype;
-var setSizeDescriptor = Object.getOwnPropertyDescriptor && hasSet ? Object.getOwnPropertyDescriptor(Set.prototype, 'size') : null;
-var setSize = hasSet && setSizeDescriptor && typeof setSizeDescriptor.get === 'function' ? setSizeDescriptor.get : null;
-var setForEach = hasSet && Set.prototype.forEach;
-var hasWeakMap = typeof WeakMap === 'function' && WeakMap.prototype;
-var weakMapHas = hasWeakMap ? WeakMap.prototype.has : null;
-var hasWeakSet = typeof WeakSet === 'function' && WeakSet.prototype;
-var weakSetHas = hasWeakSet ? WeakSet.prototype.has : null;
-var booleanValueOf = Boolean.prototype.valueOf;
-var objectToString = Object.prototype.toString;
-var functionToString = Function.prototype.toString;
-var match = String.prototype.match;
-var bigIntValueOf = typeof BigInt === 'function' ? BigInt.prototype.valueOf : null;
-var gOPS = Object.getOwnPropertySymbols;
-var symToString = typeof Symbol === 'function' ? Symbol.prototype.toString : null;
-var isEnumerable = Object.prototype.propertyIsEnumerable;
-
-var inspectCustom = (__nccwpck_require__(6121).custom);
-var inspectSymbol = inspectCustom && isSymbol(inspectCustom) ? inspectCustom : null;
-
-module.exports = function inspect_(obj, options, depth, seen) {
-    var opts = options || {};
-
-    if (has(opts, 'quoteStyle') && (opts.quoteStyle !== 'single' && opts.quoteStyle !== 'double')) {
-        throw new TypeError('option "quoteStyle" must be "single" or "double"');
-    }
-    if (
-        has(opts, 'maxStringLength') && (typeof opts.maxStringLength === 'number'
-            ? opts.maxStringLength < 0 && opts.maxStringLength !== Infinity
-            : opts.maxStringLength !== null
-        )
-    ) {
-        throw new TypeError('option "maxStringLength", if provided, must be a positive integer, Infinity, or `null`');
-    }
-    var customInspect = has(opts, 'customInspect') ? opts.customInspect : true;
-    if (typeof customInspect !== 'boolean') {
-        throw new TypeError('option "customInspect", if provided, must be `true` or `false`');
-    }
-
-    if (
-        has(opts, 'indent')
-        && opts.indent !== null
-        && opts.indent !== '\t'
-        && !(parseInt(opts.indent, 10) === opts.indent && opts.indent > 0)
-    ) {
-        throw new TypeError('options "indent" must be "\\t", an integer > 0, or `null`');
-    }
-
-    if (typeof obj === 'undefined') {
-        return 'undefined';
-    }
-    if (obj === null) {
-        return 'null';
-    }
-    if (typeof obj === 'boolean') {
-        return obj ? 'true' : 'false';
-    }
-
-    if (typeof obj === 'string') {
-        return inspectString(obj, opts);
-    }
-    if (typeof obj === 'number') {
-        if (obj === 0) {
-            return Infinity / obj > 0 ? '0' : '-0';
-        }
-        return String(obj);
-    }
-    if (typeof obj === 'bigint') {
-        return String(obj) + 'n';
-    }
-
-    var maxDepth = typeof opts.depth === 'undefined' ? 5 : opts.depth;
-    if (typeof depth === 'undefined') { depth = 0; }
-    if (depth >= maxDepth && maxDepth > 0 && typeof obj === 'object') {
-        return isArray(obj) ? '[Array]' : '[Object]';
-    }
-
-    var indent = getIndent(opts, depth);
-
-    if (typeof seen === 'undefined') {
-        seen = [];
-    } else if (indexOf(seen, obj) >= 0) {
-        return '[Circular]';
-    }
-
-    function inspect(value, from, noIndent) {
-        if (from) {
-            seen = seen.slice();
-            seen.push(from);
-        }
-        if (noIndent) {
-            var newOpts = {
-                depth: opts.depth
-            };
-            if (has(opts, 'quoteStyle')) {
-                newOpts.quoteStyle = opts.quoteStyle;
-            }
-            return inspect_(value, newOpts, depth + 1, seen);
-        }
-        return inspect_(value, opts, depth + 1, seen);
-    }
-
-    if (typeof obj === 'function') {
-        var name = nameOf(obj);
-        var keys = arrObjKeys(obj, inspect);
-        return '[Function' + (name ? ': ' + name : ' (anonymous)') + ']' + (keys.length > 0 ? ' { ' + keys.join(', ') + ' }' : '');
-    }
-    if (isSymbol(obj)) {
-        var symString = symToString.call(obj);
-        return typeof obj === 'object' ? markBoxed(symString) : symString;
-    }
-    if (isElement(obj)) {
-        var s = '<' + String(obj.nodeName).toLowerCase();
-        var attrs = obj.attributes || [];
-        for (var i = 0; i < attrs.length; i++) {
-            s += ' ' + attrs[i].name + '=' + wrapQuotes(quote(attrs[i].value), 'double', opts);
-        }
-        s += '>';
-        if (obj.childNodes && obj.childNodes.length) { s += '...'; }
-        s += '</' + String(obj.nodeName).toLowerCase() + '>';
-        return s;
-    }
-    if (isArray(obj)) {
-        if (obj.length === 0) { return '[]'; }
-        var xs = arrObjKeys(obj, inspect);
-        if (indent && !singleLineValues(xs)) {
-            return '[' + indentedJoin(xs, indent) + ']';
-        }
-        return '[ ' + xs.join(', ') + ' ]';
-    }
-    if (isError(obj)) {
-        var parts = arrObjKeys(obj, inspect);
-        if (parts.length === 0) { return '[' + String(obj) + ']'; }
-        return '{ [' + String(obj) + '] ' + parts.join(', ') + ' }';
-    }
-    if (typeof obj === 'object' && customInspect) {
-        if (inspectSymbol && typeof obj[inspectSymbol] === 'function') {
-            return obj[inspectSymbol]();
-        } else if (typeof obj.inspect === 'function') {
-            return obj.inspect();
-        }
-    }
-    if (isMap(obj)) {
-        var mapParts = [];
-        mapForEach.call(obj, function (value, key) {
-            mapParts.push(inspect(key, obj, true) + ' => ' + inspect(value, obj));
-        });
-        return collectionOf('Map', mapSize.call(obj), mapParts, indent);
-    }
-    if (isSet(obj)) {
-        var setParts = [];
-        setForEach.call(obj, function (value) {
-            setParts.push(inspect(value, obj));
-        });
-        return collectionOf('Set', setSize.call(obj), setParts, indent);
-    }
-    if (isWeakMap(obj)) {
-        return weakCollectionOf('WeakMap');
-    }
-    if (isWeakSet(obj)) {
-        return weakCollectionOf('WeakSet');
-    }
-    if (isNumber(obj)) {
-        return markBoxed(inspect(Number(obj)));
-    }
-    if (isBigInt(obj)) {
-        return markBoxed(inspect(bigIntValueOf.call(obj)));
-    }
-    if (isBoolean(obj)) {
-        return markBoxed(booleanValueOf.call(obj));
-    }
-    if (isString(obj)) {
-        return markBoxed(inspect(String(obj)));
-    }
-    if (!isDate(obj) && !isRegExp(obj)) {
-        var ys = arrObjKeys(obj, inspect);
-        if (ys.length === 0) { return '{}'; }
-        if (indent) {
-            return '{' + indentedJoin(ys, indent) + '}';
-        }
-        return '{ ' + ys.join(', ') + ' }';
-    }
-    return String(obj);
-};
-
-function wrapQuotes(s, defaultStyle, opts) {
-    var quoteChar = (opts.quoteStyle || defaultStyle) === 'double' ? '"' : "'";
-    return quoteChar + s + quoteChar;
-}
-
-function quote(s) {
-    return String(s).replace(/"/g, '&quot;');
-}
-
-function isArray(obj) { return toStr(obj) === '[object Array]'; }
-function isDate(obj) { return toStr(obj) === '[object Date]'; }
-function isRegExp(obj) { return toStr(obj) === '[object RegExp]'; }
-function isError(obj) { return toStr(obj) === '[object Error]'; }
-function isSymbol(obj) { return toStr(obj) === '[object Symbol]'; }
-function isString(obj) { return toStr(obj) === '[object String]'; }
-function isNumber(obj) { return toStr(obj) === '[object Number]'; }
-function isBigInt(obj) { return toStr(obj) === '[object BigInt]'; }
-function isBoolean(obj) { return toStr(obj) === '[object Boolean]'; }
-
-var hasOwn = Object.prototype.hasOwnProperty || function (key) { return key in this; };
-function has(obj, key) {
-    return hasOwn.call(obj, key);
-}
-
-function toStr(obj) {
-    return objectToString.call(obj);
-}
-
-function nameOf(f) {
-    if (f.name) { return f.name; }
-    var m = match.call(functionToString.call(f), /^function\s*([\w$]+)/);
-    if (m) { return m[1]; }
-    return null;
-}
-
-function indexOf(xs, x) {
-    if (xs.indexOf) { return xs.indexOf(x); }
-    for (var i = 0, l = xs.length; i < l; i++) {
-        if (xs[i] === x) { return i; }
-    }
-    return -1;
-}
-
-function isMap(x) {
-    if (!mapSize || !x || typeof x !== 'object') {
-        return false;
-    }
-    try {
-        mapSize.call(x);
-        try {
-            setSize.call(x);
-        } catch (s) {
-            return true;
-        }
-        return x instanceof Map; // core-js workaround, pre-v2.5.0
-    } catch (e) {}
-    return false;
-}
-
-function isWeakMap(x) {
-    if (!weakMapHas || !x || typeof x !== 'object') {
-        return false;
-    }
-    try {
-        weakMapHas.call(x, weakMapHas);
-        try {
-            weakSetHas.call(x, weakSetHas);
-        } catch (s) {
-            return true;
-        }
-        return x instanceof WeakMap; // core-js workaround, pre-v2.5.0
-    } catch (e) {}
-    return false;
-}
-
-function isSet(x) {
-    if (!setSize || !x || typeof x !== 'object') {
-        return false;
-    }
-    try {
-        setSize.call(x);
-        try {
-            mapSize.call(x);
-        } catch (m) {
-            return true;
-        }
-        return x instanceof Set; // core-js workaround, pre-v2.5.0
-    } catch (e) {}
-    return false;
-}
-
-function isWeakSet(x) {
-    if (!weakSetHas || !x || typeof x !== 'object') {
-        return false;
-    }
-    try {
-        weakSetHas.call(x, weakSetHas);
-        try {
-            weakMapHas.call(x, weakMapHas);
-        } catch (s) {
-            return true;
-        }
-        return x instanceof WeakSet; // core-js workaround, pre-v2.5.0
-    } catch (e) {}
-    return false;
-}
-
-function isElement(x) {
-    if (!x || typeof x !== 'object') { return false; }
-    if (typeof HTMLElement !== 'undefined' && x instanceof HTMLElement) {
-        return true;
-    }
-    return typeof x.nodeName === 'string' && typeof x.getAttribute === 'function';
-}
-
-function inspectString(str, opts) {
-    if (str.length > opts.maxStringLength) {
-        var remaining = str.length - opts.maxStringLength;
-        var trailer = '... ' + remaining + ' more character' + (remaining > 1 ? 's' : '');
-        return inspectString(str.slice(0, opts.maxStringLength), opts) + trailer;
-    }
-    // eslint-disable-next-line no-control-regex
-    var s = str.replace(/(['\\])/g, '\\$1').replace(/[\x00-\x1f]/g, lowbyte);
-    return wrapQuotes(s, 'single', opts);
-}
-
-function lowbyte(c) {
-    var n = c.charCodeAt(0);
-    var x = {
-        8: 'b',
-        9: 't',
-        10: 'n',
-        12: 'f',
-        13: 'r'
-    }[n];
-    if (x) { return '\\' + x; }
-    return '\\x' + (n < 0x10 ? '0' : '') + n.toString(16).toUpperCase();
-}
-
-function markBoxed(str) {
-    return 'Object(' + str + ')';
-}
-
-function weakCollectionOf(type) {
-    return type + ' { ? }';
-}
-
-function collectionOf(type, size, entries, indent) {
-    var joinedEntries = indent ? indentedJoin(entries, indent) : entries.join(', ');
-    return type + ' (' + size + ') {' + joinedEntries + '}';
-}
-
-function singleLineValues(xs) {
-    for (var i = 0; i < xs.length; i++) {
-        if (indexOf(xs[i], '\n') >= 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
-function getIndent(opts, depth) {
-    var baseIndent;
-    if (opts.indent === '\t') {
-        baseIndent = '\t';
-    } else if (typeof opts.indent === 'number' && opts.indent > 0) {
-        baseIndent = Array(opts.indent + 1).join(' ');
-    } else {
-        return null;
-    }
-    return {
-        base: baseIndent,
-        prev: Array(depth + 1).join(baseIndent)
-    };
-}
-
-function indentedJoin(xs, indent) {
-    if (xs.length === 0) { return ''; }
-    var lineJoiner = '\n' + indent.prev + indent.base;
-    return lineJoiner + xs.join(',' + lineJoiner) + '\n' + indent.prev;
-}
-
-function arrObjKeys(obj, inspect) {
-    var isArr = isArray(obj);
-    var xs = [];
-    if (isArr) {
-        xs.length = obj.length;
-        for (var i = 0; i < obj.length; i++) {
-            xs[i] = has(obj, i) ? inspect(obj[i], obj) : '';
-        }
-    }
-    for (var key in obj) { // eslint-disable-line no-restricted-syntax
-        if (!has(obj, key)) { continue; } // eslint-disable-line no-restricted-syntax, no-continue
-        if (isArr && String(Number(key)) === key && key < obj.length) { continue; } // eslint-disable-line no-restricted-syntax, no-continue
-        if ((/[^\w$]/).test(key)) {
-            xs.push(inspect(key, obj) + ': ' + inspect(obj[key], obj));
-        } else {
-            xs.push(key + ': ' + inspect(obj[key], obj));
-        }
-    }
-    if (typeof gOPS === 'function') {
-        var syms = gOPS(obj);
-        for (var j = 0; j < syms.length; j++) {
-            if (isEnumerable.call(obj, syms[j])) {
-                xs.push('[' + inspect(syms[j]) + ']: ' + inspect(obj[syms[j]], obj));
-            }
-        }
-    }
-    return xs;
-}
-
-
-/***/ }),
-
-/***/ 6121:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-module.exports = __nccwpck_require__(9023).inspect;
-
-
-/***/ }),
-
-/***/ 6032:
-/***/ ((module) => {
-
-"use strict";
-
-
-var replace = String.prototype.replace;
-var percentTwenties = /%20/g;
-
-var Format = {
-    RFC1738: 'RFC1738',
-    RFC3986: 'RFC3986'
-};
-
-module.exports = {
-    'default': Format.RFC3986,
-    formatters: {
-        RFC1738: function (value) {
-            return replace.call(value, percentTwenties, '+');
-        },
-        RFC3986: function (value) {
-            return String(value);
-        }
-    },
-    RFC1738: Format.RFC1738,
-    RFC3986: Format.RFC3986
-};
-
-
-/***/ }),
-
-/***/ 240:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var stringify = __nccwpck_require__(1293);
-var parse = __nccwpck_require__(9091);
-var formats = __nccwpck_require__(6032);
-
-module.exports = {
-    formats: formats,
-    parse: parse,
-    stringify: stringify
-};
-
-
-/***/ }),
-
-/***/ 9091:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var utils = __nccwpck_require__(5225);
-
-var has = Object.prototype.hasOwnProperty;
-var isArray = Array.isArray;
-
-var defaults = {
-    allowDots: false,
-    allowPrototypes: false,
-    allowSparse: false,
-    arrayLimit: 20,
-    charset: 'utf-8',
-    charsetSentinel: false,
-    comma: false,
-    decoder: utils.decode,
-    delimiter: '&',
-    depth: 5,
-    ignoreQueryPrefix: false,
-    interpretNumericEntities: false,
-    parameterLimit: 1000,
-    parseArrays: true,
-    plainObjects: false,
-    strictNullHandling: false
-};
-
-var interpretNumericEntities = function (str) {
-    return str.replace(/&#(\d+);/g, function ($0, numberStr) {
-        return String.fromCharCode(parseInt(numberStr, 10));
-    });
-};
-
-var parseArrayValue = function (val, options) {
-    if (val && typeof val === 'string' && options.comma && val.indexOf(',') > -1) {
-        return val.split(',');
-    }
-
-    return val;
-};
-
-// This is what browsers will submit when the ✓ character occurs in an
-// application/x-www-form-urlencoded body and the encoding of the page containing
-// the form is iso-8859-1, or when the submitted form has an accept-charset
-// attribute of iso-8859-1. Presumably also with other charsets that do not contain
-// the ✓ character, such as us-ascii.
-var isoSentinel = 'utf8=%26%2310003%3B'; // encodeURIComponent('&#10003;')
-
-// These are the percent-encoded utf-8 octets representing a checkmark, indicating that the request actually is utf-8 encoded.
-var charsetSentinel = 'utf8=%E2%9C%93'; // encodeURIComponent('✓')
-
-var parseValues = function parseQueryStringValues(str, options) {
-    var obj = {};
-    var cleanStr = options.ignoreQueryPrefix ? str.replace(/^\?/, '') : str;
-    var limit = options.parameterLimit === Infinity ? undefined : options.parameterLimit;
-    var parts = cleanStr.split(options.delimiter, limit);
-    var skipIndex = -1; // Keep track of where the utf8 sentinel was found
-    var i;
-
-    var charset = options.charset;
-    if (options.charsetSentinel) {
-        for (i = 0; i < parts.length; ++i) {
-            if (parts[i].indexOf('utf8=') === 0) {
-                if (parts[i] === charsetSentinel) {
-                    charset = 'utf-8';
-                } else if (parts[i] === isoSentinel) {
-                    charset = 'iso-8859-1';
-                }
-                skipIndex = i;
-                i = parts.length; // The eslint settings do not allow break;
-            }
-        }
-    }
-
-    for (i = 0; i < parts.length; ++i) {
-        if (i === skipIndex) {
-            continue;
-        }
-        var part = parts[i];
-
-        var bracketEqualsPos = part.indexOf(']=');
-        var pos = bracketEqualsPos === -1 ? part.indexOf('=') : bracketEqualsPos + 1;
-
-        var key, val;
-        if (pos === -1) {
-            key = options.decoder(part, defaults.decoder, charset, 'key');
-            val = options.strictNullHandling ? null : '';
-        } else {
-            key = options.decoder(part.slice(0, pos), defaults.decoder, charset, 'key');
-            val = utils.maybeMap(
-                parseArrayValue(part.slice(pos + 1), options),
-                function (encodedVal) {
-                    return options.decoder(encodedVal, defaults.decoder, charset, 'value');
-                }
-            );
-        }
-
-        if (val && options.interpretNumericEntities && charset === 'iso-8859-1') {
-            val = interpretNumericEntities(val);
-        }
-
-        if (part.indexOf('[]=') > -1) {
-            val = isArray(val) ? [val] : val;
-        }
-
-        if (has.call(obj, key)) {
-            obj[key] = utils.combine(obj[key], val);
-        } else {
-            obj[key] = val;
-        }
-    }
-
-    return obj;
-};
-
-var parseObject = function (chain, val, options, valuesParsed) {
-    var leaf = valuesParsed ? val : parseArrayValue(val, options);
-
-    for (var i = chain.length - 1; i >= 0; --i) {
-        var obj;
-        var root = chain[i];
-
-        if (root === '[]' && options.parseArrays) {
-            obj = [].concat(leaf);
-        } else {
-            obj = options.plainObjects ? Object.create(null) : {};
-            var cleanRoot = root.charAt(0) === '[' && root.charAt(root.length - 1) === ']' ? root.slice(1, -1) : root;
-            var index = parseInt(cleanRoot, 10);
-            if (!options.parseArrays && cleanRoot === '') {
-                obj = { 0: leaf };
-            } else if (
-                !isNaN(index)
-                && root !== cleanRoot
-                && String(index) === cleanRoot
-                && index >= 0
-                && (options.parseArrays && index <= options.arrayLimit)
-            ) {
-                obj = [];
-                obj[index] = leaf;
-            } else {
-                obj[cleanRoot] = leaf;
-            }
-        }
-
-        leaf = obj;
-    }
-
-    return leaf;
-};
-
-var parseKeys = function parseQueryStringKeys(givenKey, val, options, valuesParsed) {
-    if (!givenKey) {
-        return;
-    }
-
-    // Transform dot notation to bracket notation
-    var key = options.allowDots ? givenKey.replace(/\.([^.[]+)/g, '[$1]') : givenKey;
-
-    // The regex chunks
-
-    var brackets = /(\[[^[\]]*])/;
-    var child = /(\[[^[\]]*])/g;
-
-    // Get the parent
-
-    var segment = options.depth > 0 && brackets.exec(key);
-    var parent = segment ? key.slice(0, segment.index) : key;
-
-    // Stash the parent if it exists
-
-    var keys = [];
-    if (parent) {
-        // If we aren't using plain objects, optionally prefix keys that would overwrite object prototype properties
-        if (!options.plainObjects && has.call(Object.prototype, parent)) {
-            if (!options.allowPrototypes) {
-                return;
-            }
-        }
-
-        keys.push(parent);
-    }
-
-    // Loop through children appending to the array until we hit depth
-
-    var i = 0;
-    while (options.depth > 0 && (segment = child.exec(key)) !== null && i < options.depth) {
-        i += 1;
-        if (!options.plainObjects && has.call(Object.prototype, segment[1].slice(1, -1))) {
-            if (!options.allowPrototypes) {
-                return;
-            }
-        }
-        keys.push(segment[1]);
-    }
-
-    // If there's a remainder, just add whatever is left
-
-    if (segment) {
-        keys.push('[' + key.slice(segment.index) + ']');
-    }
-
-    return parseObject(keys, val, options, valuesParsed);
-};
-
-var normalizeParseOptions = function normalizeParseOptions(opts) {
-    if (!opts) {
-        return defaults;
-    }
-
-    if (opts.decoder !== null && opts.decoder !== undefined && typeof opts.decoder !== 'function') {
-        throw new TypeError('Decoder has to be a function.');
-    }
-
-    if (typeof opts.charset !== 'undefined' && opts.charset !== 'utf-8' && opts.charset !== 'iso-8859-1') {
-        throw new TypeError('The charset option must be either utf-8, iso-8859-1, or undefined');
-    }
-    var charset = typeof opts.charset === 'undefined' ? defaults.charset : opts.charset;
-
-    return {
-        allowDots: typeof opts.allowDots === 'undefined' ? defaults.allowDots : !!opts.allowDots,
-        allowPrototypes: typeof opts.allowPrototypes === 'boolean' ? opts.allowPrototypes : defaults.allowPrototypes,
-        allowSparse: typeof opts.allowSparse === 'boolean' ? opts.allowSparse : defaults.allowSparse,
-        arrayLimit: typeof opts.arrayLimit === 'number' ? opts.arrayLimit : defaults.arrayLimit,
-        charset: charset,
-        charsetSentinel: typeof opts.charsetSentinel === 'boolean' ? opts.charsetSentinel : defaults.charsetSentinel,
-        comma: typeof opts.comma === 'boolean' ? opts.comma : defaults.comma,
-        decoder: typeof opts.decoder === 'function' ? opts.decoder : defaults.decoder,
-        delimiter: typeof opts.delimiter === 'string' || utils.isRegExp(opts.delimiter) ? opts.delimiter : defaults.delimiter,
-        // eslint-disable-next-line no-implicit-coercion, no-extra-parens
-        depth: (typeof opts.depth === 'number' || opts.depth === false) ? +opts.depth : defaults.depth,
-        ignoreQueryPrefix: opts.ignoreQueryPrefix === true,
-        interpretNumericEntities: typeof opts.interpretNumericEntities === 'boolean' ? opts.interpretNumericEntities : defaults.interpretNumericEntities,
-        parameterLimit: typeof opts.parameterLimit === 'number' ? opts.parameterLimit : defaults.parameterLimit,
-        parseArrays: opts.parseArrays !== false,
-        plainObjects: typeof opts.plainObjects === 'boolean' ? opts.plainObjects : defaults.plainObjects,
-        strictNullHandling: typeof opts.strictNullHandling === 'boolean' ? opts.strictNullHandling : defaults.strictNullHandling
-    };
-};
-
-module.exports = function (str, opts) {
-    var options = normalizeParseOptions(opts);
-
-    if (str === '' || str === null || typeof str === 'undefined') {
-        return options.plainObjects ? Object.create(null) : {};
-    }
-
-    var tempObj = typeof str === 'string' ? parseValues(str, options) : str;
-    var obj = options.plainObjects ? Object.create(null) : {};
-
-    // Iterate over the keys and setup the new object
-
-    var keys = Object.keys(tempObj);
-    for (var i = 0; i < keys.length; ++i) {
-        var key = keys[i];
-        var newObj = parseKeys(key, tempObj[key], options, typeof str === 'string');
-        obj = utils.merge(obj, newObj, options);
-    }
-
-    if (options.allowSparse === true) {
-        return obj;
-    }
-
-    return utils.compact(obj);
-};
-
-
-/***/ }),
-
-/***/ 1293:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var getSideChannel = __nccwpck_require__(7134);
-var utils = __nccwpck_require__(5225);
-var formats = __nccwpck_require__(6032);
-var has = Object.prototype.hasOwnProperty;
-
-var arrayPrefixGenerators = {
-    brackets: function brackets(prefix) {
-        return prefix + '[]';
-    },
-    comma: 'comma',
-    indices: function indices(prefix, key) {
-        return prefix + '[' + key + ']';
-    },
-    repeat: function repeat(prefix) {
-        return prefix;
-    }
-};
-
-var isArray = Array.isArray;
-var push = Array.prototype.push;
-var pushToArray = function (arr, valueOrArray) {
-    push.apply(arr, isArray(valueOrArray) ? valueOrArray : [valueOrArray]);
-};
-
-var toISO = Date.prototype.toISOString;
-
-var defaultFormat = formats['default'];
-var defaults = {
-    addQueryPrefix: false,
-    allowDots: false,
-    charset: 'utf-8',
-    charsetSentinel: false,
-    delimiter: '&',
-    encode: true,
-    encoder: utils.encode,
-    encodeValuesOnly: false,
-    format: defaultFormat,
-    formatter: formats.formatters[defaultFormat],
-    // deprecated
-    indices: false,
-    serializeDate: function serializeDate(date) {
-        return toISO.call(date);
-    },
-    skipNulls: false,
-    strictNullHandling: false
-};
-
-var isNonNullishPrimitive = function isNonNullishPrimitive(v) {
-    return typeof v === 'string'
-        || typeof v === 'number'
-        || typeof v === 'boolean'
-        || typeof v === 'symbol'
-        || typeof v === 'bigint';
-};
-
-var stringify = function stringify(
-    object,
-    prefix,
-    generateArrayPrefix,
-    strictNullHandling,
-    skipNulls,
-    encoder,
-    filter,
-    sort,
-    allowDots,
-    serializeDate,
-    format,
-    formatter,
-    encodeValuesOnly,
-    charset,
-    sideChannel
-) {
-    var obj = object;
-
-    if (sideChannel.has(object)) {
-        throw new RangeError('Cyclic object value');
-    }
-
-    if (typeof filter === 'function') {
-        obj = filter(prefix, obj);
-    } else if (obj instanceof Date) {
-        obj = serializeDate(obj);
-    } else if (generateArrayPrefix === 'comma' && isArray(obj)) {
-        obj = utils.maybeMap(obj, function (value) {
-            if (value instanceof Date) {
-                return serializeDate(value);
-            }
-            return value;
-        });
-    }
-
-    if (obj === null) {
-        if (strictNullHandling) {
-            return encoder && !encodeValuesOnly ? encoder(prefix, defaults.encoder, charset, 'key', format) : prefix;
-        }
-
-        obj = '';
-    }
-
-    if (isNonNullishPrimitive(obj) || utils.isBuffer(obj)) {
-        if (encoder) {
-            var keyValue = encodeValuesOnly ? prefix : encoder(prefix, defaults.encoder, charset, 'key', format);
-            return [formatter(keyValue) + '=' + formatter(encoder(obj, defaults.encoder, charset, 'value', format))];
-        }
-        return [formatter(prefix) + '=' + formatter(String(obj))];
-    }
-
-    var values = [];
-
-    if (typeof obj === 'undefined') {
-        return values;
-    }
-
-    var objKeys;
-    if (generateArrayPrefix === 'comma' && isArray(obj)) {
-        // we need to join elements in
-        objKeys = [{ value: obj.length > 0 ? obj.join(',') || null : undefined }];
-    } else if (isArray(filter)) {
-        objKeys = filter;
-    } else {
-        var keys = Object.keys(obj);
-        objKeys = sort ? keys.sort(sort) : keys;
-    }
-
-    for (var i = 0; i < objKeys.length; ++i) {
-        var key = objKeys[i];
-        var value = typeof key === 'object' && key.value !== undefined ? key.value : obj[key];
-
-        if (skipNulls && value === null) {
-            continue;
-        }
-
-        var keyPrefix = isArray(obj)
-            ? typeof generateArrayPrefix === 'function' ? generateArrayPrefix(prefix, key) : prefix
-            : prefix + (allowDots ? '.' + key : '[' + key + ']');
-
-        sideChannel.set(object, true);
-        var valueSideChannel = getSideChannel();
-        pushToArray(values, stringify(
-            value,
-            keyPrefix,
-            generateArrayPrefix,
-            strictNullHandling,
-            skipNulls,
-            encoder,
-            filter,
-            sort,
-            allowDots,
-            serializeDate,
-            format,
-            formatter,
-            encodeValuesOnly,
-            charset,
-            valueSideChannel
-        ));
-    }
-
-    return values;
-};
-
-var normalizeStringifyOptions = function normalizeStringifyOptions(opts) {
-    if (!opts) {
-        return defaults;
-    }
-
-    if (opts.encoder !== null && opts.encoder !== undefined && typeof opts.encoder !== 'function') {
-        throw new TypeError('Encoder has to be a function.');
-    }
-
-    var charset = opts.charset || defaults.charset;
-    if (typeof opts.charset !== 'undefined' && opts.charset !== 'utf-8' && opts.charset !== 'iso-8859-1') {
-        throw new TypeError('The charset option must be either utf-8, iso-8859-1, or undefined');
-    }
-
-    var format = formats['default'];
-    if (typeof opts.format !== 'undefined') {
-        if (!has.call(formats.formatters, opts.format)) {
-            throw new TypeError('Unknown format option provided.');
-        }
-        format = opts.format;
-    }
-    var formatter = formats.formatters[format];
-
-    var filter = defaults.filter;
-    if (typeof opts.filter === 'function' || isArray(opts.filter)) {
-        filter = opts.filter;
-    }
-
-    return {
-        addQueryPrefix: typeof opts.addQueryPrefix === 'boolean' ? opts.addQueryPrefix : defaults.addQueryPrefix,
-        allowDots: typeof opts.allowDots === 'undefined' ? defaults.allowDots : !!opts.allowDots,
-        charset: charset,
-        charsetSentinel: typeof opts.charsetSentinel === 'boolean' ? opts.charsetSentinel : defaults.charsetSentinel,
-        delimiter: typeof opts.delimiter === 'undefined' ? defaults.delimiter : opts.delimiter,
-        encode: typeof opts.encode === 'boolean' ? opts.encode : defaults.encode,
-        encoder: typeof opts.encoder === 'function' ? opts.encoder : defaults.encoder,
-        encodeValuesOnly: typeof opts.encodeValuesOnly === 'boolean' ? opts.encodeValuesOnly : defaults.encodeValuesOnly,
-        filter: filter,
-        format: format,
-        formatter: formatter,
-        serializeDate: typeof opts.serializeDate === 'function' ? opts.serializeDate : defaults.serializeDate,
-        skipNulls: typeof opts.skipNulls === 'boolean' ? opts.skipNulls : defaults.skipNulls,
-        sort: typeof opts.sort === 'function' ? opts.sort : null,
-        strictNullHandling: typeof opts.strictNullHandling === 'boolean' ? opts.strictNullHandling : defaults.strictNullHandling
-    };
-};
-
-module.exports = function (object, opts) {
-    var obj = object;
-    var options = normalizeStringifyOptions(opts);
-
-    var objKeys;
-    var filter;
-
-    if (typeof options.filter === 'function') {
-        filter = options.filter;
-        obj = filter('', obj);
-    } else if (isArray(options.filter)) {
-        filter = options.filter;
-        objKeys = filter;
-    }
-
-    var keys = [];
-
-    if (typeof obj !== 'object' || obj === null) {
-        return '';
-    }
-
-    var arrayFormat;
-    if (opts && opts.arrayFormat in arrayPrefixGenerators) {
-        arrayFormat = opts.arrayFormat;
-    } else if (opts && 'indices' in opts) {
-        arrayFormat = opts.indices ? 'indices' : 'repeat';
-    } else {
-        arrayFormat = 'indices';
-    }
-
-    var generateArrayPrefix = arrayPrefixGenerators[arrayFormat];
-
-    if (!objKeys) {
-        objKeys = Object.keys(obj);
-    }
-
-    if (options.sort) {
-        objKeys.sort(options.sort);
-    }
-
-    var sideChannel = getSideChannel();
-    for (var i = 0; i < objKeys.length; ++i) {
-        var key = objKeys[i];
-
-        if (options.skipNulls && obj[key] === null) {
-            continue;
-        }
-        pushToArray(keys, stringify(
-            obj[key],
-            key,
-            generateArrayPrefix,
-            options.strictNullHandling,
-            options.skipNulls,
-            options.encode ? options.encoder : null,
-            options.filter,
-            options.sort,
-            options.allowDots,
-            options.serializeDate,
-            options.format,
-            options.formatter,
-            options.encodeValuesOnly,
-            options.charset,
-            sideChannel
-        ));
-    }
-
-    var joined = keys.join(options.delimiter);
-    var prefix = options.addQueryPrefix === true ? '?' : '';
-
-    if (options.charsetSentinel) {
-        if (options.charset === 'iso-8859-1') {
-            // encodeURIComponent('&#10003;'), the "numeric entity" representation of a checkmark
-            prefix += 'utf8=%26%2310003%3B&';
-        } else {
-            // encodeURIComponent('✓')
-            prefix += 'utf8=%E2%9C%93&';
-        }
-    }
-
-    return joined.length > 0 ? prefix + joined : '';
-};
-
-
-/***/ }),
-
-/***/ 5225:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var formats = __nccwpck_require__(6032);
-
-var has = Object.prototype.hasOwnProperty;
-var isArray = Array.isArray;
-
-var hexTable = (function () {
-    var array = [];
-    for (var i = 0; i < 256; ++i) {
-        array.push('%' + ((i < 16 ? '0' : '') + i.toString(16)).toUpperCase());
-    }
-
-    return array;
-}());
-
-var compactQueue = function compactQueue(queue) {
-    while (queue.length > 1) {
-        var item = queue.pop();
-        var obj = item.obj[item.prop];
-
-        if (isArray(obj)) {
-            var compacted = [];
-
-            for (var j = 0; j < obj.length; ++j) {
-                if (typeof obj[j] !== 'undefined') {
-                    compacted.push(obj[j]);
-                }
-            }
-
-            item.obj[item.prop] = compacted;
-        }
-    }
-};
-
-var arrayToObject = function arrayToObject(source, options) {
-    var obj = options && options.plainObjects ? Object.create(null) : {};
-    for (var i = 0; i < source.length; ++i) {
-        if (typeof source[i] !== 'undefined') {
-            obj[i] = source[i];
-        }
-    }
-
-    return obj;
-};
-
-var merge = function merge(target, source, options) {
-    /* eslint no-param-reassign: 0 */
-    if (!source) {
-        return target;
-    }
-
-    if (typeof source !== 'object') {
-        if (isArray(target)) {
-            target.push(source);
-        } else if (target && typeof target === 'object') {
-            if ((options && (options.plainObjects || options.allowPrototypes)) || !has.call(Object.prototype, source)) {
-                target[source] = true;
-            }
-        } else {
-            return [target, source];
-        }
-
-        return target;
-    }
-
-    if (!target || typeof target !== 'object') {
-        return [target].concat(source);
-    }
-
-    var mergeTarget = target;
-    if (isArray(target) && !isArray(source)) {
-        mergeTarget = arrayToObject(target, options);
-    }
-
-    if (isArray(target) && isArray(source)) {
-        source.forEach(function (item, i) {
-            if (has.call(target, i)) {
-                var targetItem = target[i];
-                if (targetItem && typeof targetItem === 'object' && item && typeof item === 'object') {
-                    target[i] = merge(targetItem, item, options);
-                } else {
-                    target.push(item);
-                }
-            } else {
-                target[i] = item;
-            }
-        });
-        return target;
-    }
-
-    return Object.keys(source).reduce(function (acc, key) {
-        var value = source[key];
-
-        if (has.call(acc, key)) {
-            acc[key] = merge(acc[key], value, options);
-        } else {
-            acc[key] = value;
-        }
-        return acc;
-    }, mergeTarget);
-};
-
-var assign = function assignSingleSource(target, source) {
-    return Object.keys(source).reduce(function (acc, key) {
-        acc[key] = source[key];
-        return acc;
-    }, target);
-};
-
-var decode = function (str, decoder, charset) {
-    var strWithoutPlus = str.replace(/\+/g, ' ');
-    if (charset === 'iso-8859-1') {
-        // unescape never throws, no try...catch needed:
-        return strWithoutPlus.replace(/%[0-9a-f]{2}/gi, unescape);
-    }
-    // utf-8
-    try {
-        return decodeURIComponent(strWithoutPlus);
-    } catch (e) {
-        return strWithoutPlus;
-    }
-};
-
-var encode = function encode(str, defaultEncoder, charset, kind, format) {
-    // This code was originally written by Brian White (mscdex) for the io.js core querystring library.
-    // It has been adapted here for stricter adherence to RFC 3986
-    if (str.length === 0) {
-        return str;
-    }
-
-    var string = str;
-    if (typeof str === 'symbol') {
-        string = Symbol.prototype.toString.call(str);
-    } else if (typeof str !== 'string') {
-        string = String(str);
-    }
-
-    if (charset === 'iso-8859-1') {
-        return escape(string).replace(/%u[0-9a-f]{4}/gi, function ($0) {
-            return '%26%23' + parseInt($0.slice(2), 16) + '%3B';
-        });
-    }
-
-    var out = '';
-    for (var i = 0; i < string.length; ++i) {
-        var c = string.charCodeAt(i);
-
-        if (
-            c === 0x2D // -
-            || c === 0x2E // .
-            || c === 0x5F // _
-            || c === 0x7E // ~
-            || (c >= 0x30 && c <= 0x39) // 0-9
-            || (c >= 0x41 && c <= 0x5A) // a-z
-            || (c >= 0x61 && c <= 0x7A) // A-Z
-            || (format === formats.RFC1738 && (c === 0x28 || c === 0x29)) // ( )
-        ) {
-            out += string.charAt(i);
-            continue;
-        }
-
-        if (c < 0x80) {
-            out = out + hexTable[c];
-            continue;
-        }
-
-        if (c < 0x800) {
-            out = out + (hexTable[0xC0 | (c >> 6)] + hexTable[0x80 | (c & 0x3F)]);
-            continue;
-        }
-
-        if (c < 0xD800 || c >= 0xE000) {
-            out = out + (hexTable[0xE0 | (c >> 12)] + hexTable[0x80 | ((c >> 6) & 0x3F)] + hexTable[0x80 | (c & 0x3F)]);
-            continue;
-        }
-
-        i += 1;
-        c = 0x10000 + (((c & 0x3FF) << 10) | (string.charCodeAt(i) & 0x3FF));
-        out += hexTable[0xF0 | (c >> 18)]
-            + hexTable[0x80 | ((c >> 12) & 0x3F)]
-            + hexTable[0x80 | ((c >> 6) & 0x3F)]
-            + hexTable[0x80 | (c & 0x3F)];
-    }
-
-    return out;
-};
-
-var compact = function compact(value) {
-    var queue = [{ obj: { o: value }, prop: 'o' }];
-    var refs = [];
-
-    for (var i = 0; i < queue.length; ++i) {
-        var item = queue[i];
-        var obj = item.obj[item.prop];
-
-        var keys = Object.keys(obj);
-        for (var j = 0; j < keys.length; ++j) {
-            var key = keys[j];
-            var val = obj[key];
-            if (typeof val === 'object' && val !== null && refs.indexOf(val) === -1) {
-                queue.push({ obj: obj, prop: key });
-                refs.push(val);
-            }
-        }
-    }
-
-    compactQueue(queue);
-
-    return value;
-};
-
-var isRegExp = function isRegExp(obj) {
-    return Object.prototype.toString.call(obj) === '[object RegExp]';
-};
-
-var isBuffer = function isBuffer(obj) {
-    if (!obj || typeof obj !== 'object') {
-        return false;
-    }
-
-    return !!(obj.constructor && obj.constructor.isBuffer && obj.constructor.isBuffer(obj));
-};
-
-var combine = function combine(a, b) {
-    return [].concat(a, b);
-};
-
-var maybeMap = function maybeMap(val, fn) {
-    if (isArray(val)) {
-        var mapped = [];
-        for (var i = 0; i < val.length; i += 1) {
-            mapped.push(fn(val[i]));
-        }
-        return mapped;
-    }
-    return fn(val);
-};
-
-module.exports = {
-    arrayToObject: arrayToObject,
-    assign: assign,
-    combine: combine,
-    compact: compact,
-    decode: decode,
-    encode: encode,
-    isBuffer: isBuffer,
-    isRegExp: isRegExp,
-    maybeMap: maybeMap,
-    merge: merge
-};
-
-
-/***/ }),
-
 /***/ 3058:
 /***/ ((module, exports, __nccwpck_require__) => {
 
@@ -20427,138 +18690,6 @@ SafeBuffer.allocUnsafeSlow = function (size) {
   }
   return buffer.SlowBuffer(size)
 }
-
-
-/***/ }),
-
-/***/ 7134:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var GetIntrinsic = __nccwpck_require__(470);
-var callBound = __nccwpck_require__(2856);
-var inspect = __nccwpck_require__(506);
-
-var $TypeError = GetIntrinsic('%TypeError%');
-var $WeakMap = GetIntrinsic('%WeakMap%', true);
-var $Map = GetIntrinsic('%Map%', true);
-
-var $weakMapGet = callBound('WeakMap.prototype.get', true);
-var $weakMapSet = callBound('WeakMap.prototype.set', true);
-var $weakMapHas = callBound('WeakMap.prototype.has', true);
-var $mapGet = callBound('Map.prototype.get', true);
-var $mapSet = callBound('Map.prototype.set', true);
-var $mapHas = callBound('Map.prototype.has', true);
-
-/*
- * This function traverses the list returning the node corresponding to the
- * given key.
- *
- * That node is also moved to the head of the list, so that if it's accessed
- * again we don't need to traverse the whole list. By doing so, all the recently
- * used nodes can be accessed relatively quickly.
- */
-var listGetNode = function (list, key) { // eslint-disable-line consistent-return
-	for (var prev = list, curr; (curr = prev.next) !== null; prev = curr) {
-		if (curr.key === key) {
-			prev.next = curr.next;
-			curr.next = list.next;
-			list.next = curr; // eslint-disable-line no-param-reassign
-			return curr;
-		}
-	}
-};
-
-var listGet = function (objects, key) {
-	var node = listGetNode(objects, key);
-	return node && node.value;
-};
-var listSet = function (objects, key, value) {
-	var node = listGetNode(objects, key);
-	if (node) {
-		node.value = value;
-	} else {
-		// Prepend the new node to the beginning of the list
-		objects.next = { // eslint-disable-line no-param-reassign
-			key: key,
-			next: objects.next,
-			value: value
-		};
-	}
-};
-var listHas = function (objects, key) {
-	return !!listGetNode(objects, key);
-};
-
-module.exports = function getSideChannel() {
-	var $wm;
-	var $m;
-	var $o;
-	var channel = {
-		assert: function (key) {
-			if (!channel.has(key)) {
-				throw new $TypeError('Side channel does not contain ' + inspect(key));
-			}
-		},
-		get: function (key) { // eslint-disable-line consistent-return
-			if ($WeakMap && key && (typeof key === 'object' || typeof key === 'function')) {
-				if ($wm) {
-					return $weakMapGet($wm, key);
-				}
-			} else if ($Map) {
-				if ($m) {
-					return $mapGet($m, key);
-				}
-			} else {
-				if ($o) { // eslint-disable-line no-lonely-if
-					return listGet($o, key);
-				}
-			}
-		},
-		has: function (key) {
-			if ($WeakMap && key && (typeof key === 'object' || typeof key === 'function')) {
-				if ($wm) {
-					return $weakMapHas($wm, key);
-				}
-			} else if ($Map) {
-				if ($m) {
-					return $mapHas($m, key);
-				}
-			} else {
-				if ($o) { // eslint-disable-line no-lonely-if
-					return listHas($o, key);
-				}
-			}
-			return false;
-		},
-		set: function (key, value) {
-			if ($WeakMap && key && (typeof key === 'object' || typeof key === 'function')) {
-				if (!$wm) {
-					$wm = new $WeakMap();
-				}
-				$weakMapSet($wm, key, value);
-			} else if ($Map) {
-				if (!$m) {
-					$m = new $Map();
-				}
-				$mapSet($m, key, value);
-			} else {
-				if (!$o) {
-					/*
-					 * Initialize the linked list as an empty node, so that we don't have
-					 * to special-case handling of the first node: we can always refer to
-					 * it as (previous node).next, instead of something like (list).head
-					 */
-					$o = { key: {}, next: null };
-				}
-				listSet($o, key, value);
-			}
-		}
-	};
-	return channel;
-};
 
 
 /***/ }),
@@ -21297,664 +19428,6 @@ if (process.env.NODE_DEBUG && /\btunnel\b/.test(process.env.NODE_DEBUG)) {
   debug = function() {};
 }
 exports.debug = debug; // for test
-
-
-/***/ }),
-
-/***/ 6184:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : new P(function (resolve) { resolve(result.value); }).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-const url = __nccwpck_require__(7016);
-const http = __nccwpck_require__(8611);
-const https = __nccwpck_require__(5692);
-const util = __nccwpck_require__(4143);
-let fs;
-let tunnel;
-var HttpCodes;
-(function (HttpCodes) {
-    HttpCodes[HttpCodes["OK"] = 200] = "OK";
-    HttpCodes[HttpCodes["MultipleChoices"] = 300] = "MultipleChoices";
-    HttpCodes[HttpCodes["MovedPermanently"] = 301] = "MovedPermanently";
-    HttpCodes[HttpCodes["ResourceMoved"] = 302] = "ResourceMoved";
-    HttpCodes[HttpCodes["SeeOther"] = 303] = "SeeOther";
-    HttpCodes[HttpCodes["NotModified"] = 304] = "NotModified";
-    HttpCodes[HttpCodes["UseProxy"] = 305] = "UseProxy";
-    HttpCodes[HttpCodes["SwitchProxy"] = 306] = "SwitchProxy";
-    HttpCodes[HttpCodes["TemporaryRedirect"] = 307] = "TemporaryRedirect";
-    HttpCodes[HttpCodes["PermanentRedirect"] = 308] = "PermanentRedirect";
-    HttpCodes[HttpCodes["BadRequest"] = 400] = "BadRequest";
-    HttpCodes[HttpCodes["Unauthorized"] = 401] = "Unauthorized";
-    HttpCodes[HttpCodes["PaymentRequired"] = 402] = "PaymentRequired";
-    HttpCodes[HttpCodes["Forbidden"] = 403] = "Forbidden";
-    HttpCodes[HttpCodes["NotFound"] = 404] = "NotFound";
-    HttpCodes[HttpCodes["MethodNotAllowed"] = 405] = "MethodNotAllowed";
-    HttpCodes[HttpCodes["NotAcceptable"] = 406] = "NotAcceptable";
-    HttpCodes[HttpCodes["ProxyAuthenticationRequired"] = 407] = "ProxyAuthenticationRequired";
-    HttpCodes[HttpCodes["RequestTimeout"] = 408] = "RequestTimeout";
-    HttpCodes[HttpCodes["Conflict"] = 409] = "Conflict";
-    HttpCodes[HttpCodes["Gone"] = 410] = "Gone";
-    HttpCodes[HttpCodes["TooManyRequests"] = 429] = "TooManyRequests";
-    HttpCodes[HttpCodes["InternalServerError"] = 500] = "InternalServerError";
-    HttpCodes[HttpCodes["NotImplemented"] = 501] = "NotImplemented";
-    HttpCodes[HttpCodes["BadGateway"] = 502] = "BadGateway";
-    HttpCodes[HttpCodes["ServiceUnavailable"] = 503] = "ServiceUnavailable";
-    HttpCodes[HttpCodes["GatewayTimeout"] = 504] = "GatewayTimeout";
-})(HttpCodes = exports.HttpCodes || (exports.HttpCodes = {}));
-const HttpRedirectCodes = [HttpCodes.MovedPermanently, HttpCodes.ResourceMoved, HttpCodes.SeeOther, HttpCodes.TemporaryRedirect, HttpCodes.PermanentRedirect];
-const HttpResponseRetryCodes = [HttpCodes.BadGateway, HttpCodes.ServiceUnavailable, HttpCodes.GatewayTimeout];
-const NetworkRetryErrors = ['ECONNRESET', 'ENOTFOUND', 'ESOCKETTIMEDOUT', 'ETIMEDOUT', 'ECONNREFUSED'];
-const RetryableHttpVerbs = ['OPTIONS', 'GET', 'DELETE', 'HEAD'];
-const ExponentialBackoffCeiling = 10;
-const ExponentialBackoffTimeSlice = 5;
-class HttpClientResponse {
-    constructor(message) {
-        this.message = message;
-    }
-    readBody() {
-        return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
-            let buffer = Buffer.alloc(0);
-            const encodingCharset = util.obtainContentCharset(this);
-            // Extract Encoding from header: 'content-encoding'
-            // Match `gzip`, `gzip, deflate` variations of GZIP encoding
-            const contentEncoding = this.message.headers['content-encoding'] || '';
-            const isGzippedEncoded = new RegExp('(gzip$)|(gzip, *deflate)').test(contentEncoding);
-            this.message.on('data', function (data) {
-                const chunk = (typeof data === 'string') ? Buffer.from(data, encodingCharset) : data;
-                buffer = Buffer.concat([buffer, chunk]);
-            }).on('end', function () {
-                return __awaiter(this, void 0, void 0, function* () {
-                    if (isGzippedEncoded) { // Process GZipped Response Body HERE
-                        const gunzippedBody = yield util.decompressGzippedContent(buffer, encodingCharset);
-                        resolve(gunzippedBody);
-                    }
-                    else {
-                        resolve(buffer.toString(encodingCharset));
-                    }
-                });
-            }).on('error', function (err) {
-                reject(err);
-            });
-        }));
-    }
-}
-exports.HttpClientResponse = HttpClientResponse;
-function isHttps(requestUrl) {
-    let parsedUrl = url.parse(requestUrl);
-    return parsedUrl.protocol === 'https:';
-}
-exports.isHttps = isHttps;
-var EnvironmentVariables;
-(function (EnvironmentVariables) {
-    EnvironmentVariables["HTTP_PROXY"] = "HTTP_PROXY";
-    EnvironmentVariables["HTTPS_PROXY"] = "HTTPS_PROXY";
-    EnvironmentVariables["NO_PROXY"] = "NO_PROXY";
-})(EnvironmentVariables || (EnvironmentVariables = {}));
-class HttpClient {
-    constructor(userAgent, handlers, requestOptions) {
-        this._ignoreSslError = false;
-        this._allowRedirects = true;
-        this._allowRedirectDowngrade = false;
-        this._maxRedirects = 50;
-        this._allowRetries = false;
-        this._maxRetries = 1;
-        this._keepAlive = false;
-        this._disposed = false;
-        this.userAgent = userAgent;
-        this.handlers = handlers || [];
-        let no_proxy = process.env[EnvironmentVariables.NO_PROXY];
-        if (no_proxy) {
-            this._httpProxyBypassHosts = [];
-            no_proxy.split(',').forEach(bypass => {
-                this._httpProxyBypassHosts.push(util.buildProxyBypassRegexFromEnv(bypass));
-            });
-        }
-        this.requestOptions = requestOptions;
-        if (requestOptions) {
-            if (requestOptions.ignoreSslError != null) {
-                this._ignoreSslError = requestOptions.ignoreSslError;
-            }
-            this._socketTimeout = requestOptions.socketTimeout;
-            this._httpProxy = requestOptions.proxy;
-            if (requestOptions.proxy && requestOptions.proxy.proxyBypassHosts) {
-                this._httpProxyBypassHosts = [];
-                requestOptions.proxy.proxyBypassHosts.forEach(bypass => {
-                    this._httpProxyBypassHosts.push(new RegExp(bypass, 'i'));
-                });
-            }
-            this._certConfig = requestOptions.cert;
-            if (this._certConfig) {
-                // If using cert, need fs
-                fs = __nccwpck_require__(9896);
-                // cache the cert content into memory, so we don't have to read it from disk every time
-                if (this._certConfig.caFile && fs.existsSync(this._certConfig.caFile)) {
-                    this._ca = fs.readFileSync(this._certConfig.caFile, 'utf8');
-                }
-                if (this._certConfig.certFile && fs.existsSync(this._certConfig.certFile)) {
-                    this._cert = fs.readFileSync(this._certConfig.certFile, 'utf8');
-                }
-                if (this._certConfig.keyFile && fs.existsSync(this._certConfig.keyFile)) {
-                    this._key = fs.readFileSync(this._certConfig.keyFile, 'utf8');
-                }
-            }
-            if (requestOptions.allowRedirects != null) {
-                this._allowRedirects = requestOptions.allowRedirects;
-            }
-            if (requestOptions.allowRedirectDowngrade != null) {
-                this._allowRedirectDowngrade = requestOptions.allowRedirectDowngrade;
-            }
-            if (requestOptions.maxRedirects != null) {
-                this._maxRedirects = Math.max(requestOptions.maxRedirects, 0);
-            }
-            if (requestOptions.keepAlive != null) {
-                this._keepAlive = requestOptions.keepAlive;
-            }
-            if (requestOptions.allowRetries != null) {
-                this._allowRetries = requestOptions.allowRetries;
-            }
-            if (requestOptions.maxRetries != null) {
-                this._maxRetries = requestOptions.maxRetries;
-            }
-        }
-    }
-    options(requestUrl, additionalHeaders) {
-        return this.request('OPTIONS', requestUrl, null, additionalHeaders || {});
-    }
-    get(requestUrl, additionalHeaders) {
-        return this.request('GET', requestUrl, null, additionalHeaders || {});
-    }
-    del(requestUrl, additionalHeaders) {
-        return this.request('DELETE', requestUrl, null, additionalHeaders || {});
-    }
-    post(requestUrl, data, additionalHeaders) {
-        return this.request('POST', requestUrl, data, additionalHeaders || {});
-    }
-    patch(requestUrl, data, additionalHeaders) {
-        return this.request('PATCH', requestUrl, data, additionalHeaders || {});
-    }
-    put(requestUrl, data, additionalHeaders) {
-        return this.request('PUT', requestUrl, data, additionalHeaders || {});
-    }
-    head(requestUrl, additionalHeaders) {
-        return this.request('HEAD', requestUrl, null, additionalHeaders || {});
-    }
-    sendStream(verb, requestUrl, stream, additionalHeaders) {
-        return this.request(verb, requestUrl, stream, additionalHeaders);
-    }
-    /**
-     * Makes a raw http request.
-     * All other methods such as get, post, patch, and request ultimately call this.
-     * Prefer get, del, post and patch
-     */
-    request(verb, requestUrl, data, headers) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (this._disposed) {
-                throw new Error("Client has already been disposed.");
-            }
-            let parsedUrl = url.parse(requestUrl);
-            let info = this._prepareRequest(verb, parsedUrl, headers);
-            // Only perform retries on reads since writes may not be idempotent.
-            let maxTries = (this._allowRetries && RetryableHttpVerbs.indexOf(verb) != -1) ? this._maxRetries + 1 : 1;
-            let numTries = 0;
-            let response;
-            while (numTries < maxTries) {
-                try {
-                    response = yield this.requestRaw(info, data);
-                }
-                catch (err) {
-                    numTries++;
-                    if (err && err.code && NetworkRetryErrors.indexOf(err.code) > -1 && numTries < maxTries) {
-                        yield this._performExponentialBackoff(numTries);
-                        continue;
-                    }
-                    throw err;
-                }
-                // Check if it's an authentication challenge
-                if (response && response.message && response.message.statusCode === HttpCodes.Unauthorized) {
-                    let authenticationHandler;
-                    for (let i = 0; i < this.handlers.length; i++) {
-                        if (this.handlers[i].canHandleAuthentication(response)) {
-                            authenticationHandler = this.handlers[i];
-                            break;
-                        }
-                    }
-                    if (authenticationHandler) {
-                        return authenticationHandler.handleAuthentication(this, info, data);
-                    }
-                    else {
-                        // We have received an unauthorized response but have no handlers to handle it.
-                        // Let the response return to the caller.
-                        return response;
-                    }
-                }
-                let redirectsRemaining = this._maxRedirects;
-                while (HttpRedirectCodes.indexOf(response.message.statusCode) != -1
-                    && this._allowRedirects
-                    && redirectsRemaining > 0) {
-                    const redirectUrl = response.message.headers["location"];
-                    if (!redirectUrl) {
-                        // if there's no location to redirect to, we won't
-                        break;
-                    }
-                    let parsedRedirectUrl = url.parse(redirectUrl);
-                    if (parsedUrl.protocol == 'https:' && parsedUrl.protocol != parsedRedirectUrl.protocol && !this._allowRedirectDowngrade) {
-                        throw new Error("Redirect from HTTPS to HTTP protocol. This downgrade is not allowed for security reasons. If you want to allow this behavior, set the allowRedirectDowngrade option to true.");
-                    }
-                    // we need to finish reading the response before reassigning response
-                    // which will leak the open socket.
-                    yield response.readBody();
-                    // let's make the request with the new redirectUrl
-                    info = this._prepareRequest(verb, parsedRedirectUrl, headers);
-                    response = yield this.requestRaw(info, data);
-                    redirectsRemaining--;
-                }
-                if (HttpResponseRetryCodes.indexOf(response.message.statusCode) == -1) {
-                    // If not a retry code, return immediately instead of retrying
-                    return response;
-                }
-                numTries += 1;
-                if (numTries < maxTries) {
-                    yield response.readBody();
-                    yield this._performExponentialBackoff(numTries);
-                }
-            }
-            return response;
-        });
-    }
-    /**
-     * Needs to be called if keepAlive is set to true in request options.
-     */
-    dispose() {
-        if (this._agent) {
-            this._agent.destroy();
-        }
-        this._disposed = true;
-    }
-    /**
-     * Raw request.
-     * @param info
-     * @param data
-     */
-    requestRaw(info, data) {
-        return new Promise((resolve, reject) => {
-            let callbackForResult = function (err, res) {
-                if (err) {
-                    reject(err);
-                }
-                resolve(res);
-            };
-            this.requestRawWithCallback(info, data, callbackForResult);
-        });
-    }
-    /**
-     * Raw request with callback.
-     * @param info
-     * @param data
-     * @param onResult
-     */
-    requestRawWithCallback(info, data, onResult) {
-        let socket;
-        if (typeof (data) === 'string') {
-            info.options.headers["Content-Length"] = Buffer.byteLength(data, 'utf8');
-        }
-        let callbackCalled = false;
-        let handleResult = (err, res) => {
-            if (!callbackCalled) {
-                callbackCalled = true;
-                onResult(err, res);
-            }
-        };
-        let req = info.httpModule.request(info.options, (msg) => {
-            let res = new HttpClientResponse(msg);
-            handleResult(null, res);
-        });
-        req.on('socket', (sock) => {
-            socket = sock;
-        });
-        // If we ever get disconnected, we want the socket to timeout eventually
-        req.setTimeout(this._socketTimeout || 3 * 60000, () => {
-            if (socket) {
-                socket.destroy();
-            }
-            handleResult(new Error('Request timeout: ' + info.options.path), null);
-        });
-        req.on('error', function (err) {
-            // err has statusCode property
-            // res should have headers
-            handleResult(err, null);
-        });
-        if (data && typeof (data) === 'string') {
-            req.write(data, 'utf8');
-        }
-        if (data && typeof (data) !== 'string') {
-            data.on('close', function () {
-                req.end();
-            });
-            data.pipe(req);
-        }
-        else {
-            req.end();
-        }
-    }
-    _prepareRequest(method, requestUrl, headers) {
-        const info = {};
-        info.parsedUrl = requestUrl;
-        const usingSsl = info.parsedUrl.protocol === 'https:';
-        info.httpModule = usingSsl ? https : http;
-        const defaultPort = usingSsl ? 443 : 80;
-        info.options = {};
-        info.options.host = info.parsedUrl.hostname;
-        info.options.port = info.parsedUrl.port ? parseInt(info.parsedUrl.port) : defaultPort;
-        info.options.path = (info.parsedUrl.pathname || '') + (info.parsedUrl.search || '');
-        info.options.method = method;
-        info.options.timeout = (this.requestOptions && this.requestOptions.socketTimeout) || this._socketTimeout;
-        this._socketTimeout = info.options.timeout;
-        info.options.headers = this._mergeHeaders(headers);
-        if (this.userAgent != null) {
-            info.options.headers["user-agent"] = this.userAgent;
-        }
-        info.options.agent = this._getAgent(info.parsedUrl);
-        // gives handlers an opportunity to participate
-        if (this.handlers && !this._isPresigned(url.format(requestUrl))) {
-            this.handlers.forEach((handler) => {
-                handler.prepareRequest(info.options);
-            });
-        }
-        return info;
-    }
-    _isPresigned(requestUrl) {
-        if (this.requestOptions && this.requestOptions.presignedUrlPatterns) {
-            const patterns = this.requestOptions.presignedUrlPatterns;
-            for (let i = 0; i < patterns.length; i++) {
-                if (requestUrl.match(patterns[i])) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-    _mergeHeaders(headers) {
-        const lowercaseKeys = obj => Object.keys(obj).reduce((c, k) => (c[k.toLowerCase()] = obj[k], c), {});
-        if (this.requestOptions && this.requestOptions.headers) {
-            return Object.assign({}, lowercaseKeys(this.requestOptions.headers), lowercaseKeys(headers));
-        }
-        return lowercaseKeys(headers || {});
-    }
-    _getAgent(parsedUrl) {
-        let agent;
-        let proxy = this._getProxy(parsedUrl);
-        let useProxy = proxy.proxyUrl && proxy.proxyUrl.hostname && !this._isMatchInBypassProxyList(parsedUrl);
-        if (this._keepAlive && useProxy) {
-            agent = this._proxyAgent;
-        }
-        if (this._keepAlive && !useProxy) {
-            agent = this._agent;
-        }
-        // if agent is already assigned use that agent.
-        if (!!agent) {
-            return agent;
-        }
-        const usingSsl = parsedUrl.protocol === 'https:';
-        let maxSockets = 100;
-        if (!!this.requestOptions) {
-            maxSockets = this.requestOptions.maxSockets || http.globalAgent.maxSockets;
-        }
-        if (useProxy) {
-            // If using proxy, need tunnel
-            if (!tunnel) {
-                tunnel = __nccwpck_require__(770);
-            }
-            const agentOptions = {
-                maxSockets: maxSockets,
-                keepAlive: this._keepAlive,
-                proxy: {
-                    proxyAuth: proxy.proxyAuth,
-                    host: proxy.proxyUrl.hostname,
-                    port: proxy.proxyUrl.port
-                },
-            };
-            let tunnelAgent;
-            const overHttps = proxy.proxyUrl.protocol === 'https:';
-            if (usingSsl) {
-                tunnelAgent = overHttps ? tunnel.httpsOverHttps : tunnel.httpsOverHttp;
-            }
-            else {
-                tunnelAgent = overHttps ? tunnel.httpOverHttps : tunnel.httpOverHttp;
-            }
-            agent = tunnelAgent(agentOptions);
-            this._proxyAgent = agent;
-        }
-        // if reusing agent across request and tunneling agent isn't assigned create a new agent
-        if (this._keepAlive && !agent) {
-            const options = { keepAlive: this._keepAlive, maxSockets: maxSockets };
-            agent = usingSsl ? new https.Agent(options) : new http.Agent(options);
-            this._agent = agent;
-        }
-        // if not using private agent and tunnel agent isn't setup then use global agent
-        if (!agent) {
-            agent = usingSsl ? https.globalAgent : http.globalAgent;
-        }
-        if (usingSsl && this._ignoreSslError) {
-            // we don't want to set NODE_TLS_REJECT_UNAUTHORIZED=0 since that will affect request for entire process
-            // http.RequestOptions doesn't expose a way to modify RequestOptions.agent.options
-            // we have to cast it to any and change it directly
-            agent.options = Object.assign(agent.options || {}, { rejectUnauthorized: false });
-        }
-        if (usingSsl && this._certConfig) {
-            agent.options = Object.assign(agent.options || {}, { ca: this._ca, cert: this._cert, key: this._key, passphrase: this._certConfig.passphrase });
-        }
-        return agent;
-    }
-    _getProxy(parsedUrl) {
-        let usingSsl = parsedUrl.protocol === 'https:';
-        let proxyConfig = this._httpProxy;
-        // fallback to http_proxy and https_proxy env
-        let https_proxy = process.env[EnvironmentVariables.HTTPS_PROXY];
-        let http_proxy = process.env[EnvironmentVariables.HTTP_PROXY];
-        if (!proxyConfig) {
-            if (https_proxy && usingSsl) {
-                proxyConfig = {
-                    proxyUrl: https_proxy
-                };
-            }
-            else if (http_proxy) {
-                proxyConfig = {
-                    proxyUrl: http_proxy
-                };
-            }
-        }
-        let proxyUrl;
-        let proxyAuth;
-        if (proxyConfig) {
-            if (proxyConfig.proxyUrl.length > 0) {
-                proxyUrl = url.parse(proxyConfig.proxyUrl);
-            }
-            if (proxyConfig.proxyUsername || proxyConfig.proxyPassword) {
-                proxyAuth = proxyConfig.proxyUsername + ":" + proxyConfig.proxyPassword;
-            }
-        }
-        return { proxyUrl: proxyUrl, proxyAuth: proxyAuth };
-    }
-    _isMatchInBypassProxyList(parsedUrl) {
-        if (!this._httpProxyBypassHosts) {
-            return false;
-        }
-        let bypass = false;
-        this._httpProxyBypassHosts.forEach(bypassHost => {
-            if (bypassHost.test(parsedUrl.href)) {
-                bypass = true;
-            }
-        });
-        return bypass;
-    }
-    _performExponentialBackoff(retryNumber) {
-        retryNumber = Math.min(ExponentialBackoffCeiling, retryNumber);
-        const ms = ExponentialBackoffTimeSlice * Math.pow(2, retryNumber);
-        return new Promise(resolve => setTimeout(() => resolve(), ms));
-    }
-}
-exports.HttpClient = HttpClient;
-
-
-/***/ }),
-
-/***/ 4143:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information.
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : new P(function (resolve) { resolve(result.value); }).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-const qs = __nccwpck_require__(240);
-const url = __nccwpck_require__(7016);
-const path = __nccwpck_require__(6928);
-const zlib = __nccwpck_require__(3106);
-/**
- * creates an url from a request url and optional base url (http://server:8080)
- * @param {string} resource - a fully qualified url or relative path
- * @param {string} baseUrl - an optional baseUrl (http://server:8080)
- * @param {IRequestOptions} options - an optional options object, could include QueryParameters e.g.
- * @return {string} - resultant url
- */
-function getUrl(resource, baseUrl, queryParams) {
-    const pathApi = path.posix || path;
-    let requestUrl = '';
-    if (!baseUrl) {
-        requestUrl = resource;
-    }
-    else if (!resource) {
-        requestUrl = baseUrl;
-    }
-    else {
-        const base = url.parse(baseUrl);
-        const resultantUrl = url.parse(resource);
-        // resource (specific per request) elements take priority
-        resultantUrl.protocol = resultantUrl.protocol || base.protocol;
-        resultantUrl.auth = resultantUrl.auth || base.auth;
-        resultantUrl.host = resultantUrl.host || base.host;
-        resultantUrl.pathname = pathApi.resolve(base.pathname, resultantUrl.pathname);
-        if (!resultantUrl.pathname.endsWith('/') && resource.endsWith('/')) {
-            resultantUrl.pathname += '/';
-        }
-        requestUrl = url.format(resultantUrl);
-    }
-    return queryParams ?
-        getUrlWithParsedQueryParams(requestUrl, queryParams) :
-        requestUrl;
-}
-exports.getUrl = getUrl;
-/**
- *
- * @param {string} requestUrl
- * @param {IRequestQueryParams} queryParams
- * @return {string} - Request's URL with Query Parameters appended/parsed.
- */
-function getUrlWithParsedQueryParams(requestUrl, queryParams) {
-    const url = requestUrl.replace(/\?$/g, ''); // Clean any extra end-of-string "?" character
-    const parsedQueryParams = qs.stringify(queryParams.params, buildParamsStringifyOptions(queryParams));
-    return `${url}${parsedQueryParams}`;
-}
-/**
- * Build options for QueryParams Stringifying.
- *
- * @param {IRequestQueryParams} queryParams
- * @return {object}
- */
-function buildParamsStringifyOptions(queryParams) {
-    let options = {
-        addQueryPrefix: true,
-        delimiter: (queryParams.options || {}).separator || '&',
-        allowDots: (queryParams.options || {}).shouldAllowDots || false,
-        arrayFormat: (queryParams.options || {}).arrayFormat || 'repeat',
-        encodeValuesOnly: (queryParams.options || {}).shouldOnlyEncodeValues || true
-    };
-    return options;
-}
-/**
- * Decompress/Decode gzip encoded JSON
- * Using Node.js built-in zlib module
- *
- * @param {Buffer} buffer
- * @param {string} charset? - optional; defaults to 'utf-8'
- * @return {Promise<string>}
- */
-function decompressGzippedContent(buffer, charset) {
-    return __awaiter(this, void 0, void 0, function* () {
-        return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
-            zlib.gunzip(buffer, function (error, buffer) {
-                if (error) {
-                    reject(error);
-                }
-                resolve(buffer.toString(charset || 'utf-8'));
-            });
-        }));
-    });
-}
-exports.decompressGzippedContent = decompressGzippedContent;
-/**
- * Builds a RegExp to test urls against for deciding
- * wether to bypass proxy from an entry of the
- * environment variable setting NO_PROXY
- *
- * @param {string} bypass
- * @return {RegExp}
- */
-function buildProxyBypassRegexFromEnv(bypass) {
-    try {
-        // We need to keep this around for back-compat purposes
-        return new RegExp(bypass, 'i');
-    }
-    catch (err) {
-        if (err instanceof SyntaxError && (bypass || "").startsWith("*")) {
-            let wildcardEscaped = bypass.replace('*', '(.*)');
-            return new RegExp(wildcardEscaped, 'i');
-        }
-        throw err;
-    }
-}
-exports.buildProxyBypassRegexFromEnv = buildProxyBypassRegexFromEnv;
-/**
- * Obtain Response's Content Charset.
- * Through inspecting `content-type` response header.
- * It Returns 'utf-8' if NO charset specified/matched.
- *
- * @param {IHttpClientResponse} response
- * @return {string} - Content Encoding Charset; Default=utf-8
- */
-function obtainContentCharset(response) {
-    // Find the charset, if specified.
-    // Search for the `charset=CHARSET` string, not including `;,\r\n`
-    // Example: content-type: 'application/json;charset=utf-8'
-    // |__ matches would be ['charset=utf-8', 'utf-8', index: 18, input: 'application/json; charset=utf-8']
-    // |_____ matches[1] would have the charset :tada: , in our example it's utf-8
-    // However, if the matches Array was empty or no charset found, 'utf-8' would be returned by default.
-    const nodeSupportedEncodings = ['ascii', 'utf8', 'utf16le', 'ucs2', 'base64', 'binary', 'hex'];
-    const contentType = response.message.headers['content-type'] || '';
-    const matches = contentType.match(/charset=([^;,\r\n]+)/i);
-    return (matches && matches[1] && nodeSupportedEncodings.indexOf(matches[1]) != -1) ? matches[1] : 'utf-8';
-}
-exports.obtainContentCharset = obtainContentCharset;
 
 
 /***/ }),
@@ -50403,14 +47876,6 @@ module.exports = require("util");
 
 /***/ }),
 
-/***/ 3106:
-/***/ ((module) => {
-
-"use strict";
-module.exports = require("zlib");
-
-/***/ }),
-
 /***/ 9192:
 /***/ ((module) => {
 
@@ -56473,7 +53938,7 @@ var import_core_client = __nccwpck_require__(160);
 var import_core_util = __nccwpck_require__(7779);
 var import_core_rest_pipeline = __nccwpck_require__(778);
 var import_errors = __nccwpck_require__(6242);
-var import_identityTokenEndpoint = __nccwpck_require__(7859);
+var import_identityTokenEndpoint = __nccwpck_require__(240);
 var import_constants = __nccwpck_require__(516);
 var import_tracing = __nccwpck_require__(9180);
 var import_logging = __nccwpck_require__(2615);
@@ -57815,7 +55280,7 @@ async function parseJsonToken(result) {
 
 /***/ }),
 
-/***/ 8978:
+/***/ 6121:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 var __defProp = Object.defineProperty;
@@ -58590,7 +56055,7 @@ var import_azureDeveloperCliCredential = __nccwpck_require__(9190);
 var import_azureCliCredential = __nccwpck_require__(7204);
 var import_azurePowerShellCredential = __nccwpck_require__(8223);
 var import_visualStudioCodeCredential = __nccwpck_require__(8088);
-var import_brokerCredential = __nccwpck_require__(8978);
+var import_brokerCredential = __nccwpck_require__(6121);
 function createDefaultBrokerCredential(options = {}) {
   return new import_brokerCredential.BrokerCredential(options);
 }
@@ -61649,7 +59114,7 @@ function getBearerTokenProvider(credential, scopes, options) {
 
 /***/ }),
 
-/***/ 7859:
+/***/ 240:
 /***/ ((module) => {
 
 var __defProp = Object.defineProperty;

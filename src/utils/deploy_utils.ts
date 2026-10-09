@@ -3,8 +3,7 @@
 
 
 import * as core from '@actions/core';
-import { getBearer, getManagedIdentityBearer } from './service_principal_client_utils';
-import { getAzureFederatedToken } from './federated_identity_utils';
+import { appendDefaultScope, getTokenProvider } from './auth';
 
 export enum DeployStatus {
     success = 'Success',
@@ -37,44 +36,52 @@ export type ResourceType = 'credential' | 'sqlPool' | 'bigDataPool' | 'sqlscript
 
 
 export async function getParams(dataplane: boolean = false, env: string = ""): Promise<Params> {
-    try {
+    let environment: string;
+    let resourceGroup: string;
+    let clientId: string;
+    let clientSecret: string;
+    let subscriptionId: string;
+    let tenantId: string;
+    let managedIdentity: string;
+    let federatedIdentity: string;
+    let activeDirectoryEndpointUrl: string;
+    let resourceManagerEndpointUrl: string;
 
-        const env: string = core.getInput('Environment');
-        var resourceGroup = core.getInput("resourceGroup");
-        var clientId = core.getInput("clientId");
-        var clientSecret = core.getInput("clientSecret");
-        var subscriptionId = core.getInput("subscriptionId");
-        var tenantId = core.getInput("tenantId");
-        var managedIdentity = core.getInput("managedIdentity");
-        var federatedIdentity = core.getInput("federatedIdentity");
-        var activeDirectoryEndpointUrl = getAdEndpointUrl(env);
-        var resourceManagerEndpointUrl = getRmEndpointUrl(env);
+    try {
+        environment = env || core.getInput('Environment');
+        resourceGroup = core.getInput("resourceGroup");
+        clientId = core.getInput("clientId");
+        clientSecret = core.getInput("clientSecret");
+        subscriptionId = core.getInput("subscriptionId");
+        tenantId = core.getInput("tenantId");
+        managedIdentity = core.getInput("managedIdentity");
+        federatedIdentity = core.getInput("federatedIdentity");
+        activeDirectoryEndpointUrl = getAdEndpointUrl(environment);
+        resourceManagerEndpointUrl = getRmEndpointUrl(environment);
 
     } catch (err) {
-        throw new Error("Unable to parse the secret: " + err);
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error("Unable to read the action inputs: " + message + ". Check the Environment input is one of Azure Public, Azure China or Azure US Government.");
+    }
+
+    if (clientSecret) {
+        core.setSecret(clientSecret);
     }
 
     try {
         if (dataplane) {
-            resourceManagerEndpointUrl = await getRMUrl(env);
+            resourceManagerEndpointUrl = await getRMUrl(environment);
         }
 
-        let bearer: string;
-
-        if(managedIdentity == 'true') {
-            bearer = await getManagedIdentityBearer(resourceManagerEndpointUrl);
-        }
-        else if(federatedIdentity == 'true') {
-            bearer = await getAzureFederatedToken({
-              clientId: clientId,
-              tenantId: tenantId,
-              subscriptionId: subscriptionId,
-              resourceManagerEndpointUrl: resourceManagerEndpointUrl
-            });
-        }
-        else {
-            bearer = await getBearer(clientId, clientSecret, subscriptionId, tenantId, resourceManagerEndpointUrl, activeDirectoryEndpointUrl);
-        }
+        const tokenProvider = getTokenProvider({
+            clientId,
+            clientSecret,
+            tenantId,
+            managedIdentity,
+            federatedIdentity,
+            authorityHost: activeDirectoryEndpointUrl
+        });
+        const bearer: string = await tokenProvider.getToken(appendDefaultScope(resourceManagerEndpointUrl));
 
         let params: Params = {
             'clientId': clientId,
@@ -91,7 +98,8 @@ export async function getParams(dataplane: boolean = false, env: string = ""): P
         return params;
 
     } catch (err) {
-        throw new Error("Failed to fetch Bearer: " + err);
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error("Failed to fetch Bearer: " + message);
     }
 }
 

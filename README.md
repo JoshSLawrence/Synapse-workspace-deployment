@@ -122,6 +122,7 @@ Check the [documentation](https://docs.microsoft.com/en-us/azure/synapse-analyti
 #### Using managed identity
 MSI is only supported with self hosted VMs on Azure. Please set the runner as [self-hosted](https://docs.github.com/en/actions/hosting-your-own-runners/adding-self-hosted-runners).
 Enabled the system assigned managed identity for your VM and add it to your Synapse studio as Synapse Admin.
+To use a user-assigned managed identity instead, also set `clientId` to that identity's client ID; without `clientId` the system-assigned identity is used.
 
 ```yaml
 uses: Azure/synapse-workspace-deployment

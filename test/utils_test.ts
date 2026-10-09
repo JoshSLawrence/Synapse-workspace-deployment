@@ -1,4 +1,3 @@
-import * as core from '@actions/core';
 import {
     createArmTemplate,
     findDefaultArtifacts,
@@ -8,9 +7,9 @@ import {
 import { getParams, getRMUrl } from "../src/utils/deploy_utils";
 import { ILogger, SystemLogger } from "../src/utils/logger";
 import { armParams, armTemplate, armTemplate_complete, expectedArmTemplate } from "./helpers/utils_test_helpers";
-import { appendDefaultScope } from '../src/utils/federated_identity_utils';
-const pcu = require("../src/utils/service_principal_client_utils");
+import { appendDefaultScope, setTokenProvider } from '../src/utils/auth';
 
+const core = require('@actions/core');
 const chai_object = require('chai');
 const sinon = require("sinon");
 const expect = chai_object.expect;
@@ -18,12 +17,14 @@ const assert = chai_object.assert;
 
 describe("Test deploy utils", () => {
 
-    // Skipped: tsx's esbuild output has non-configurable exports, so sinon
-    // cannot stub getBearer. Re-enable once authentication takes an injectable
-    // token provider (P3).
-    it.skip('should fetch params', async () => {
-        let stubbedGetBearer = sinon.stub(pcu, "getBearer").callsFake(() => { return "bearer" });
-        let stubbedSPAttributes = sinon.stub(core, "getInput").callsFake((x: any) => { return x === "Environment" ? "Azure Public" : x });
+    afterEach(() => {
+        sinon.restore();
+        setTokenProvider(undefined);
+    });
+
+    it('should fetch params', async () => {
+        setTokenProvider({ getToken: async () => "bearer" });
+        sinon.stub(core, "getInput").callsFake((x: any) => { return x === "Environment" ? "Azure Public" : x });
         let params = await getParams();
         expect(params.clientId).to.be.equal('clientId');
         expect(params.clientSecret).to.be.equal('clientSecret');
@@ -51,7 +52,7 @@ describe("Test Arm template utils", () => {
         expect(completeArmTemplate).to.be.equal(expectedArmTemplate);
 
         let defaultArtifacts = findDefaultArtifacts(completeArmTemplate, targetWorkspaceName);
-        expect(defaultArtifacts.get('github-cicd-1-WorkspaceDefaultSqlServer')).to.be.equal('MochaTesting-WorkspaceDefaultSqlServer');
+        expect(defaultArtifacts.get('myworkspace-WorkspaceDefaultSqlServer')).to.be.equal('MochaTesting-WorkspaceDefaultSqlServer');
     });
 
     it('should populate arm resources and dependency tree', async () => {
@@ -115,7 +116,7 @@ describe("Test SystemLogger utils", () => {
     });
 });
 
-describe("Test Federated Identity utils", () => {
+describe("Test scope helper", () => {
     it("Scopes should have /.default appended regardles of presence of trailing /'s", () => {
       expect(appendDefaultScope("https://management.azure.com")).to.be.equal("https://management.azure.com/.default");
       expect(appendDefaultScope("https://management.azure.com/")).to.be.equal("https://management.azure.com/.default");
