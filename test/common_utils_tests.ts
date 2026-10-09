@@ -1,5 +1,5 @@
 import chai = require('chai');
-import {isDefaultArtifact, isStrNullOrEmpty} from "../utils/common_utils";
+import {isDefaultArtifact, isStrNullOrEmpty} from "../src/utils/common_utils";
 import {
     DEFAULTARTIFACT4,
     DEFAULTARTIFACTCREDENTAILS,

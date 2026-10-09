@@ -1,5 +1,5 @@
 import {DATASETPAYLOAD, PIPELINEPAYLOAD} from "./helpers/test_fixtures";
-import {getDependentsFromArtifactFromWorkspace} from "../utils/workspace_artifacts_getter";
+import {getDependentsFromArtifactFromWorkspace} from "../src/utils/workspace_artifacts_getter";
 
 const chai_object = require('chai');
 const expect = chai_object.expect;

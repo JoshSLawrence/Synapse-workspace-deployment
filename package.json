@@ -2,11 +2,10 @@
   "name": "synapse_action",
   "version": "1.0.0",
   "description": "Github action to deploy template and parameter files to Synapse Workspace.",
-  "main": "entrypoint.js",
   "scripts": {
+    "build": "tsc -p tsconfig.build.json && ncc build build/main.js -o dist",
     "test": "mocha -r ts-node/register \"test/**/*.ts\"",
-    "start": "node entrypoint.js",
-    "build": "tsc"
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "Aaditya Sharma",
@@ -39,11 +38,15 @@
   },
   "devDependencies": {
     "@types/uuid": "^8.3.0",
+    "@vercel/ncc": "0.38.4",
     "chai": "^4.3.0",
     "mocha": "^8.3.0",
     "node-stream-zip": "^1.11.3",
     "sinon": "^9.2.4",
     "ts-node": "^9.1.1",
     "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }
