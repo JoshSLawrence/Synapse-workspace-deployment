@@ -27,7 +27,7 @@ export async function main() {
                 await bundle_manager.invokeBundle();
                 await OperationManager.ValidateArtifacts();
                 break;
-            case 'default':
+            default:
                 throw new Error(`Operation not supported : ${operation}`);
         }
     } catch (err) {
@@ -40,7 +40,7 @@ main()
         process.exit(0)
     })
     .catch((err: Error) => {
-        core.info("Action failed -> " + err);
+        core.setFailed(err);
         process.exit(1);
     });
 

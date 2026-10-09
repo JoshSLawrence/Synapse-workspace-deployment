@@ -3,7 +3,7 @@
 
 
 import * as yaml from 'js-yaml';
-import {v4 as uuidv4} from 'uuid';
+import {randomUUID} from 'crypto';
 import {SystemLogger} from './logger';
 import {DefaultArtifact, isDefaultArtifact} from "./common_utils";
 import {DataFactoryType} from "./artifacts_enum";
@@ -592,7 +592,7 @@ function createDependancyTree(artifacts: Array<Resource>) {
 function convertIpynb2Payload(payloadObj: any): string {
     SystemLogger.info('Converting payload');
     let payload = {
-        "name": uuidv4(),
+        "name": randomUUID(),
         "properties": {
             "nbformat": 4,
             "nbformat_minor": 2,

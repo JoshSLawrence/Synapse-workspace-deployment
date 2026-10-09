@@ -9,7 +9,6 @@ import { Resource } from '../utils/arm_template_utils';
 import { Artifact, DataFactoryType } from "../utils/artifacts_enum";
 import { DeployStatus, Env, getParams, Params } from '../utils/deploy_utils';
 import { SystemLogger } from '../utils/logger';
-import {resolve} from "q";
 
 
 export var typeMap = new Map<string, Artifact>([
@@ -126,7 +125,7 @@ export class ArtifactClient {
                     return reject(DeployStatus.failed);
                 }
 
-                return resolve(DeployStatus.success);
+                return DeployStatus.success;
             });
         });
     }
@@ -375,7 +374,7 @@ export class ArtifactClient {
                 });
             };
 
-            return resolve(DeployStatus.success);
+            return DeployStatus.success;
         }
         catch(err) {
             throw err;
@@ -425,12 +424,12 @@ export class ArtifactClient {
                             return reject(DeployStatus.failed);
                         }
 
-                        return resolve(DeployStatus.success);
+                        return DeployStatus.success;
                     } else {
                         if(resourceType == Artifact.managedprivateendpoints){
                             let status = responseJson['properties']['provisioningState'];
                             if (status == "Succeeded"){
-                                return resolve(DeployStatus.success);
+                                return DeployStatus.success;
                             }
 
                             if (status == "Provisioning"){
@@ -440,7 +439,7 @@ export class ArtifactClient {
                                     token: token
                                 }
                                 this.deploymentTrackingRequests.push(deploymentTrackingRequest);
-                                return resolve(DeployStatus.success);
+                                return DeployStatus.success;
                             }
                         }
                         return reject(DeployStatus.failed);
@@ -479,7 +478,7 @@ export class ArtifactClient {
                         this.deploymentTrackingRequests.push(deploymentTrackingRequest);
                     }
                 }
-                return resolve(DeployStatus.success);
+                return DeployStatus.success;
             }, (reason) => {
                 SystemLogger.info("Artifact Delete failed: " + reason);
                 return reject(DeployStatus.failed);
@@ -580,19 +579,6 @@ export class ArtifactClient {
             'User-Agent': this.client.userAgent?.toString()
         }
         return headers;
-    }
-
-    private getAudienceUrl(env: string): string {
-        switch (env) {
-            case Env.prod.toString():
-                return `https://dev.azuresynapse.net`;
-            case Env.mooncake.toString():
-                return `https://dev.azuresynapse.azure.cn`;
-            case Env.usnat.toString():
-                return `https://dev.azuresynapse.usgovcloudapi.net`;
-            default:
-                throw new Error('Environment validation failed. Valid choice are Azure Public, Azure China and Azure US Government');
-        }
     }
 
     private getBaseurl(workspace: string, environment: string, resourceType: string) {

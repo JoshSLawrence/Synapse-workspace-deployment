@@ -37,18 +37,6 @@ export enum DataFactoryType {
     database = "Microsoft.Synapse/workspaces/databases",
     sparkconfiguration = "Microsoft.Synapse/workspaces/sparkConfigurations"
 }
-export enum DEFAULT_ARTIFACTS {
-    sqlserver = "workspacedefaultsqlserver",
-    storage = "workspacedefaultstorage",
-    credentials = "workspacesystemidentity"
-}
-
-export enum DEFAULT_ARTIFACTS_TYPE {
-    sqlserver = "AzureSqlDW",
-    storage = "AzureBlobFS",
-    credentials = "ManagedIdentity"
-}
-
 export enum OPERATIONS {
     deploy = "deploy",
     validate = "validate",
