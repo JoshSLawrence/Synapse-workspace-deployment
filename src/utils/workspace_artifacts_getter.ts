@@ -1,15 +1,11 @@
 import {ArtifactClient} from '../clients/artifacts_client';
 import * as deployUtils from './deploy_utils';
-import * as httpClient from 'typed-rest-client/HttpClient';
-import * as httpInterfaces from 'typed-rest-client/Interfaces';
+import { OutgoingHttpHeaders } from 'http';
+import { httpClient, isSuccessStatus, userAgent } from '../http';
 import {checkIfArtifactExists, Database, DbChildren, Resource} from './arm_template_utils';
 import {Artifact, DataFactoryType} from './artifacts_enum';
 import {SystemLogger} from "./logger";
 import {isDefaultArtifact} from "./common_utils";
-
-const userAgent: string = 'synapse-github-cicd-deploy-task'
-const requestOptions: httpInterfaces.IRequestOptions = {};
-const client: httpClient.HttpClient = new httpClient.HttpClient(userAgent, undefined, requestOptions);
 
 const artifactTypesToQuery:Artifact[] = [
     Artifact.credential,
@@ -32,7 +28,7 @@ export async function getArtifactsFromWorkspaceOfType(artifactTypeToQuery: Artif
     var params = await deployUtils.getParams(true, environment);
     var token =  params.bearer;
 
-    var headers: httpInterfaces.IHeaders = {
+    var headers: OutgoingHttpHeaders = {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'User-Agent': userAgent
@@ -43,29 +39,28 @@ export async function getArtifactsFromWorkspaceOfType(artifactTypeToQuery: Artif
     let moreResult = true;
 
     while(moreResult){
-        var resp = new Promise<string>((resolve, reject) => {
-            client.get(resourceUrl, headers).then(async (res) => {
-                var resStatus = res.message.statusCode;
+        var resourcesString: string;
+        try {
+            var res = await httpClient.get(resourceUrl, headers);
+            var resStatus = res.message.statusCode;
 
-                if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                    SystemLogger.info(`Failed to fetch workspace info, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                    return reject("Failed to fetch workspace info " + res.message.statusMessage);
-                }
-                var body = await res.readBody();
+            if (!isSuccessStatus(resStatus)) {
+                SystemLogger.info(`Failed to fetch workspace info, status: ${resStatus}; status message: ${res.message.statusMessage}`);
+                throw "Failed to fetch workspace info " + res.message.statusMessage;
+            }
+            resourcesString = await res.readBody();
 
-                if (!body) {
-                    SystemLogger.info("No response body for url: " + resourceUrl);
-                    return reject("Failed to fetch workspace info response");
-                }
-                return resolve(body);
-
-            }, (reason) => {
-                SystemLogger.info('Failed to fetch artifacts from workspace: '+ reason);
-                return reject(deployUtils.DeployStatus.failed);
-            });
-        });
-
-        var resourcesString = await resp;
+            if (!resourcesString) {
+                SystemLogger.info("No response body for url: " + resourceUrl);
+                throw "Failed to fetch workspace info response";
+            }
+        } catch (err) {
+            if (typeof err === 'string') {
+                throw err;
+            }
+            SystemLogger.info('Failed to fetch artifacts from workspace: ' + err);
+            throw deployUtils.DeployStatus.failed;
+        }
         var resourcesJson = JSON.parse(resourcesString);
         const list = resourcesJson.value ?? resourcesJson?.items;
         moreResult = false;
@@ -440,7 +435,7 @@ export async function SKipManagedPE(targetWorkspaceName: string, environment: st
     var params = await deployUtils.getParams(true, environment);
     var token =  params.bearer;
 
-    var headers: httpInterfaces.IHeaders = {
+    var headers: OutgoingHttpHeaders = {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
         'User-Agent': userAgent
@@ -448,20 +443,13 @@ export async function SKipManagedPE(targetWorkspaceName: string, environment: st
 
     var resourceUrl = getResourceFromWorkspaceUrl(targetWorkspaceName, environment,Artifact.managedprivateendpoints);
 
-    var resp = new Promise<boolean>((resolve, reject) => {
-        client.get(resourceUrl, headers).then(async (res) => {
-            var resStatus = res.message.statusCode;
-
-            if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                let body = await res.readBody();
-                if(body.includes("does not have a managed virtual network associated"))
-                    return resolve(true);
-            }
-            return resolve(false);
-        });
-    });
-
-    return resp;
+    const res = await httpClient.get(resourceUrl, headers);
+    if (!isSuccessStatus(res.message.statusCode)) {
+        const body = await res.readBody();
+        if (body.includes("does not have a managed virtual network associated"))
+            return true;
+    }
+    return false;
 }
 
 function SkipDatabase(artifactJsonContent: string): boolean{
@@ -493,36 +481,35 @@ async function GetDatabasesWithChildren(databases: Resource[], targetWorkspaceNa
                     let params = await deployUtils.getParams(true, environment);
                     let token = params.bearer
 
-                    let headers: httpInterfaces.IHeaders = {
+                    let headers: OutgoingHttpHeaders = {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json',
                         'User-Agent': userAgent
                     }
 
-                    await client.get(requestURI, headers).then(async (res) => {
-                        let resStatus = res.message.statusCode;
+                    const res = await httpClient.get(requestURI, headers);
+                    let resStatus = res.message.statusCode;
 
-                        if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                            console.info(`Failed to fetch database ${db.name} info, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                            let body = await res.readBody();
-                            throw new Error("Failed to fetch database info :" + body);
-                        }
+                    if (!isSuccessStatus(resStatus)) {
+                        console.info(`Failed to fetch database ${db.name} info, status: ${resStatus}; status message: ${res.message.statusMessage}`);
                         let body = await res.readBody();
-                        let childrenObj =  JSON.parse(body)["items"];
-                        for(let child of childrenObj){
-                            let childObj :DbChildren = {
-                                name : child["Name"],
-                                type: action
-                            }
-                            children.push(childObj);
+                        throw new Error("Failed to fetch database info :" + body);
+                    }
+                    let body = await res.readBody();
+                    let childrenObj =  JSON.parse(body)["items"];
+                    for(let child of childrenObj){
+                        let childObj :DbChildren = {
+                            name : child["Name"],
+                            type: action
                         }
+                        children.push(childObj);
+                    }
 
-                        let bodyObj = JSON.parse(body);
-                        if(bodyObj.hasOwnProperty('continuationToken')){
-                            requestURI = bodyObj['continuationToken'];
-                            fetchMore = true;
-                        }
-                    });
+                    let bodyObj = JSON.parse(body);
+                    if(bodyObj.hasOwnProperty('continuationToken')){
+                        requestURI = bodyObj['continuationToken'];
+                        fetchMore = true;
+                    }
                 }
 
             }
@@ -536,6 +523,6 @@ async function GetDatabasesWithChildren(databases: Resource[], targetWorkspaceNa
         return databasesWithChildren;
     }
     catch(err){
-        throw new Error(JSON.stringify(err));
+        throw new Error(err instanceof Error ? err.message : JSON.stringify(err));
     }
 }
