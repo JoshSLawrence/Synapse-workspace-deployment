@@ -60,7 +60,12 @@ export async function getParams(dataplane: boolean = false, env: string = ""): P
         resourceManagerEndpointUrl = getRmEndpointUrl(environment);
 
     } catch (err) {
-        throw new Error("Unable to parse the secret: " + err);
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error("Unable to read the action inputs: " + message + ". Check the Environment input is one of Azure Public, Azure China or Azure US Government.");
+    }
+
+    if (clientSecret) {
+        core.setSecret(clientSecret);
     }
 
     try {

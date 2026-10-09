@@ -24,6 +24,8 @@ export interface AuthInputs {
     httpClient?: ClientSecretCredentialOptions['httpClient'];
 }
 
+export const SIGN_IN_TIMEOUT_MS = 60000;
+
 const FEDERATED_AUDIENCE = 'api://AzureADTokenExchange';
 
 export function appendDefaultScope(url: string): string {
@@ -80,19 +82,40 @@ export function createCredential(inputs: AuthInputs): TokenCredential {
         { authorityHost: inputs.authorityHost, httpClient: inputs.httpClient });
 }
 
+// A sign-in that never answers would otherwise hold the job until the runner
+// kills it.
+async function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+    });
+    try {
+        return await Promise.race([promise, timeout]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 /**
  * Wraps a credential so that every token it returns is masked in the logs.
  * The credential caches tokens per scope until shortly before they expire,
  * so keeping one provider for the run avoids a sign-in per artifact.
  */
-export function createTokenProvider(inputs: AuthInputs, credential: TokenCredential = createCredential(inputs)): TokenProvider {
+export function createTokenProvider(
+    inputs: AuthInputs,
+    credential: TokenCredential = createCredential(inputs),
+    signInTimeoutMs: number = SIGN_IN_TIMEOUT_MS
+): TokenProvider {
     const masked = new Set<string>();
 
     return {
         async getToken(scope: string): Promise<string> {
             let token: string;
             try {
-                const accessToken = await credential.getToken(scope);
+                const accessToken = await withTimeout(
+                    credential.getToken(scope),
+                    signInTimeoutMs,
+                    `Sign-in to ${inputs.authorityHost} timed out after ${Math.round(signInTimeoutMs / 1000)} s; retry the job.`);
                 if (!accessToken) {
                     throw new Error('the credential returned no token');
                 }
@@ -117,6 +140,14 @@ let provider: TokenProvider | undefined;
 export function getTokenProvider(inputs: AuthInputs): TokenProvider {
     if (!provider) {
         provider = createTokenProvider(inputs);
+    }
+    return provider;
+}
+
+/** Returns the provider created by the first sign-in, for later token refreshes. */
+export function currentTokenProvider(): TokenProvider {
+    if (!provider) {
+        throw new Error('No Azure sign-in has happened yet; this is a bug in the action.');
     }
     return provider;
 }
