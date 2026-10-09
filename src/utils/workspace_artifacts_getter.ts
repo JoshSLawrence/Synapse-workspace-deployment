@@ -1,7 +1,7 @@
 import {ArtifactClient} from '../clients/artifacts_client';
 import * as deployUtils from './deploy_utils';
 import { OutgoingHttpHeaders } from 'http';
-import { httpClient, isSuccessStatus, userAgent } from '../http';
+import { httpClient, isRedirectStatus, isSuccessStatus, permissionHint, readBody, redirectError, userAgent } from '../http';
 import {checkIfArtifactExists, Database, DbChildren, Resource} from './arm_template_utils';
 import {Artifact, DataFactoryType} from './artifacts_enum';
 import {SystemLogger} from "./logger";
@@ -43,23 +43,25 @@ export async function getArtifactsFromWorkspaceOfType(artifactTypeToQuery: Artif
         try {
             var res = await httpClient.get(resourceUrl, headers);
             var resStatus = res.message.statusCode;
+            resourcesString = await readBody(res);
 
+            if (isRedirectStatus(resStatus)) {
+                throw redirectError(res);
+            }
             if (!isSuccessStatus(resStatus)) {
                 SystemLogger.info(`Failed to fetch workspace info, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                throw "Failed to fetch workspace info " + res.message.statusMessage;
+                throw new Error(`Failed to fetch ${artifactTypeToQuery} artifacts from the workspace: status ${resStatus}: ${resourcesString}.` +
+                    permissionHint(resStatus, 'a Synapse RBAC role that can read artifacts (for example Synapse Artifact User) on the workspace'));
             }
-            resourcesString = await res.readBody();
 
             if (!resourcesString) {
                 SystemLogger.info("No response body for url: " + resourceUrl);
-                throw "Failed to fetch workspace info response";
+                throw new Error("Failed to fetch workspace info response: the response body was empty.");
             }
         } catch (err) {
-            if (typeof err === 'string') {
-                throw err;
-            }
-            SystemLogger.info('Failed to fetch artifacts from workspace: ' + err);
-            throw deployUtils.DeployStatus.failed;
+            const message = err instanceof Error ? err.message : String(err);
+            SystemLogger.info('Failed to fetch artifacts from workspace: ' + message);
+            throw new Error(message);
         }
         var resourcesJson = JSON.parse(resourcesString);
         const list = resourcesJson.value ?? resourcesJson?.items;
@@ -444,8 +446,8 @@ export async function SKipManagedPE(targetWorkspaceName: string, environment: st
     var resourceUrl = getResourceFromWorkspaceUrl(targetWorkspaceName, environment,Artifact.managedprivateendpoints);
 
     const res = await httpClient.get(resourceUrl, headers);
+    const body = await readBody(res);
     if (!isSuccessStatus(res.message.statusCode)) {
-        const body = await res.readBody();
         if (body.includes("does not have a managed virtual network associated"))
             return true;
     }
@@ -490,12 +492,11 @@ async function GetDatabasesWithChildren(databases: Resource[], targetWorkspaceNa
                     const res = await httpClient.get(requestURI, headers);
                     let resStatus = res.message.statusCode;
 
+                    let body = await readBody(res);
                     if (!isSuccessStatus(resStatus)) {
                         console.info(`Failed to fetch database ${db.name} info, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                        let body = await res.readBody();
-                        throw new Error("Failed to fetch database info :" + body);
+                        throw new Error(`Failed to fetch database info: status ${resStatus}: ${body}.` + permissionHint(resStatus, 'a Synapse RBAC role that can read artifacts on the workspace'));
                     }
-                    let body = await res.readBody();
                     let childrenObj =  JSON.parse(body)["items"];
                     for(let child of childrenObj){
                         let childObj :DbChildren = {

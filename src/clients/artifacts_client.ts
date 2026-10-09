@@ -5,10 +5,11 @@
 import * as core from '@actions/core';
 import { OutgoingHttpHeaders } from 'http';
 import { HttpClient } from '@actions/http-client';
-import { httpClient, isSuccessStatus, userAgent } from '../http';
+import { httpClient, isRedirectStatus, isSuccessStatus, readBody, redirectError, userAgent } from '../http';
+import { appendDefaultScope, currentTokenProvider } from '../utils/auth';
 import { Resource } from '../utils/arm_template_utils';
 import { Artifact, DataFactoryType } from "../utils/artifacts_enum";
-import { DeployStatus, Env, getParams, Params } from '../utils/deploy_utils';
+import { DeployStatus, Env, getParams, getRMUrl, Params } from '../utils/deploy_utils';
 import { SystemLogger } from '../utils/logger';
 
 
@@ -35,7 +36,9 @@ export var typeMap = new Map<string, Artifact>([
 export interface DeploymentTrackingRequest {
     url: string,
     name: string,
-    token: string;
+    // Polls can outlast a token, so each poll asks the provider for a fresh
+    // one for this scope instead of reusing the token from the PUT.
+    scope: string;
 }
 
 export class ArtifactClient {
@@ -115,7 +118,12 @@ export class ArtifactClient {
         var resStatus = res.message.statusCode;
         console.log(`For Artifact: ${resource}: ArtifactDeletionTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
 
+        const body = await readBody(res);
+        if (isRedirectStatus(resStatus)) {
+            throw redirectError(res);
+        }
         if (!isSuccessStatus(resStatus)) {
+            console.log(`For Artifact: ${resource}: deletion failed: ${body}`);
             throw new Error(DeployStatus.failed);
         }
 
@@ -126,10 +134,10 @@ export class ArtifactClient {
         for(let i=0; i<this.deploymentTrackingRequests.length; i++){
             let deploymentTrackingRequest = this.deploymentTrackingRequests[i];
             if(isDelete) {
-                await this.checkStatusForDelete(deploymentTrackingRequest.url, deploymentTrackingRequest.name, deploymentTrackingRequest.token);
+                await this.checkStatusForDelete(deploymentTrackingRequest.url, deploymentTrackingRequest.name, deploymentTrackingRequest.scope);
             }
             else {
-                await this.checkStatus(deploymentTrackingRequest.url, deploymentTrackingRequest.name, deploymentTrackingRequest.token);
+                await this.checkStatus(deploymentTrackingRequest.url, deploymentTrackingRequest.name, deploymentTrackingRequest.scope);
             }
         }
         while(this.deploymentTrackingRequests.length>0){
@@ -176,7 +184,7 @@ export class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl,
                 `${Artifact.credential.toString()}s`, payload, token);
         } catch (err) {
-            throw new Error("Credential deployment failed " + JSON.stringify(err));
+            throw new Error("Credential deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -191,7 +199,7 @@ export class ArtifactClient {
             return await this.artifactDeploymentTask(base_url,
                 `${Artifact.integrationruntime.toString()}s`, payload, token);
         } catch (err) {
-            throw new Error("Integration runtime deployment failed " + JSON.stringify(err));
+            throw new Error("Integration runtime deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -201,7 +209,7 @@ export class ArtifactClient {
                 `${Artifact.kqlScript.toString()}s`, payload, token);
         } catch (err) {
             SystemLogger.info(err instanceof Error ? err.message : String(err));
-            throw new Error("KqlScript deployment failed " + JSON.stringify(err));
+            throw new Error("KqlScript deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -210,7 +218,7 @@ export class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl,
                 `${Artifact.linkedservice.toString()}s`, payload, token);
         } catch (err) {
-            throw new Error("Linked service deployment failed " + JSON.stringify(err));
+            throw new Error("Linked service deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -219,7 +227,7 @@ export class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl,
                 `${Artifact.trigger.toString()}s`, payload, token);
         } catch (err) {
-            throw new Error("Trigger deployment failed " + JSON.stringify(err));
+            throw new Error("Trigger deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -228,7 +236,7 @@ export class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl,
                 `${Artifact.dataflow.toString()}s`, payload, token);
         } catch (err) {
-            throw new Error("Data flow deployment failed " + JSON.stringify(err));
+            throw new Error("Data flow deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -237,7 +245,7 @@ export class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl,
                 `${Artifact.pipeline.toString()}s`, payload, token);
         } catch (err) {
-            throw new Error("Data set deployment failed " + JSON.stringify(err));
+            throw new Error("Data set deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -246,7 +254,7 @@ export class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl,
                 `${Artifact.dataset.toString()}s`, payload, token);
         } catch (err) {
-            throw new Error("Data set deployment failed " + JSON.stringify(err));
+            throw new Error("Data set deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -255,7 +263,7 @@ export class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl,
                 `${Artifact.sqlscript.toString()}s`, payload, token);
         } catch (err) {
-            throw new Error("SQL script deployment status " + JSON.stringify(err));
+            throw new Error("SQL script deployment status " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -265,7 +273,7 @@ export class ArtifactClient {
                 `${Artifact.notebook.toString()}s`, payload, token);
 
         } catch (err) {
-            throw new Error("Notebook deployment status " + JSON.stringify(err));
+            throw new Error("Notebook deployment status " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -275,7 +283,7 @@ export class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl,
                 `${Artifact.sparkjobdefinition.toString()}s`, payload, token);
         } catch (err) {
-            throw new Error("SparkJobDefination deployment status " + JSON.stringify(err));
+            throw new Error("SparkJobDefination deployment status " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -293,7 +301,7 @@ export class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl,
                 `${Artifact.managedprivateendpoints.toString()}`, payload, token);
         } catch (err) {
-            throw new Error("ManagedPrivateEndpoint deployment status " + JSON.stringify(err));
+            throw new Error("ManagedPrivateEndpoint deployment status " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -302,7 +310,7 @@ export class ArtifactClient {
             return await this.artifactsGroupDeploymentTask(baseUrl, payload, token);
         } catch (err) {
             console.log(err);
-            throw new Error("Database deployment failed " + JSON.stringify(err));
+            throw new Error("Database deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -312,7 +320,7 @@ export class ArtifactClient {
                 `${Artifact.sparkconfiguration.toString()}s`, payload, token);
         } catch (err) {
             console.log(err);
-            throw new Error("Spark Configuration deployment failed " + JSON.stringify(err));
+            throw new Error("Spark Configuration deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
 
@@ -349,8 +357,11 @@ export class ArtifactClient {
                 let resStatus = res.message.statusCode;
                 console.log(`For Artifact: ${artifact['name']} of type ${artifact['type']}: ArtifactDeploymentTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
 
+                const body = await readBody(res);
+                if (isRedirectStatus(resStatus)) {
+                    throw redirectError(res);
+                }
                 if (!isSuccessStatus(resStatus)) {
-                    const body = await res.readBody();
                     if (!!body) {
                         console.log(`For Artifact: ${artifact['name']} of type ${artifact['type']} deployment failed : ${body}`);
                     }
@@ -364,6 +375,19 @@ export class ArtifactClient {
         catch(err) {
             throw err;
         }
+    }
+
+    // Integration runtimes deploy through Azure Resource Manager; everything
+    // else uses the Synapse data plane.
+    private async scopeFor(resourceType: string): Promise<string> {
+        if (resourceType === `${Artifact.integrationruntime}s`) {
+            return appendDefaultScope(this.params.resourceManagerEndpointUrl);
+        }
+        return this.dataPlaneScope();
+    }
+
+    private async dataPlaneScope(): Promise<string> {
+        return appendDefaultScope(await getRMUrl(core.getInput('Environment')));
     }
 
     private async artifactDeploymentTask(baseUrl: string, resourceType: string, payloadObj: Resource,
@@ -383,7 +407,10 @@ export class ArtifactClient {
         let resStatus = res.message.statusCode;
         SystemLogger.info(`For Artifact: ${payloadObj.name}: ArtifactDeploymentTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
 
-        let body = await res.readBody();
+        let body = await readBody(res);
+        if (isRedirectStatus(resStatus)) {
+            throw redirectError(res);
+        }
         if (!isSuccessStatus(resStatus)) {
             if (!!body) {
                 SystemLogger.info("Deploy artifact failed: " + body);
@@ -394,6 +421,7 @@ export class ArtifactClient {
         let location: string = res.message.headers.location!;
         let responseJson = JSON.parse(body);
         let operationId = responseJson['operationId'];
+        let scope = await this.scopeFor(resourceType);
         if (!!operationId) {
             if (!location) {
                 location = this.getStatusUrl(baseUrl, resourceType, operationId);
@@ -401,7 +429,7 @@ export class ArtifactClient {
             let deploymentTrackingRequest: DeploymentTrackingRequest = {
                 url: location,
                 name: payloadObj.name,
-                token: token
+                scope: scope
             }
             this.deploymentTrackingRequests.push(deploymentTrackingRequest);
             return DeployStatus.success;
@@ -417,7 +445,7 @@ export class ArtifactClient {
                 let deploymentTrackingRequest: DeploymentTrackingRequest = {
                     url: url,
                     name: payloadObj.name,
-                    token: token
+                    scope: scope
                 }
                 this.deploymentTrackingRequests.push(deploymentTrackingRequest);
                 return DeployStatus.success;
@@ -441,7 +469,12 @@ export class ArtifactClient {
         var resStatus = res.message.statusCode;
         SystemLogger.info(`For Artifact: ${payloadObj.name}: ArtifactDeletionTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
 
+        const body = await readBody(res);
+        if (isRedirectStatus(resStatus)) {
+            throw redirectError(res);
+        }
         if (!isSuccessStatus(resStatus)) {
+            SystemLogger.info(`For Artifact: ${payloadObj.name}: deletion failed: ${body}`);
             throw DeployStatus.failed;
         }
 
@@ -452,7 +485,7 @@ export class ArtifactClient {
                 let deploymentTrackingRequest: DeploymentTrackingRequest = {
                     url: location,
                     name: payloadObj.name,
-                    token: token
+                    scope: await this.dataPlaneScope()
                 }
                 this.deploymentTrackingRequests.push(deploymentTrackingRequest);
             }
@@ -460,7 +493,7 @@ export class ArtifactClient {
         return DeployStatus.success;
     }
 
-    private async checkStatus(url: string, name: string, token: string) {
+    private async checkStatus(url: string, name: string, scope: string) {
         var timeout = new Date().getTime() + (60000 * 20); // 20 Minutes
         var delayMilliSecs = 30000; // 0.5 minute
 
@@ -472,17 +505,26 @@ export class ArtifactClient {
             }
             var artifactName = '';
 
+            var token = await currentTokenProvider().getToken(scope);
             var res = await this.client.get(url, this.getHeaders(token));
             var resStatus = res.message.statusCode;
-            var body = await res.readBody();
+            var body = await readBody(res);
             SystemLogger.info(`For artifact: ${name}: Checkstatus: ${resStatus}; status message: ${res.message.statusMessage}`);
-            if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
+            if (isRedirectStatus(resStatus)) {
+                throw redirectError(res);
+            }
+            if (!isSuccessStatus(resStatus)) {
                 let msg = res.message.statusMessage;
-                let response = JSON.parse(body);
-                if(body != null && response.error != null && response.error.message != null) {
-                    msg = response.error.message;
+                try {
+                    let response = JSON.parse(body);
+                    if (response?.error?.message != null) {
+                        msg = response.error.message;
+                    }
+                } catch {
+                    // A non-JSON error body: report the status alone.
                 }
-                throw new Error(`Checkstatus => status: ${resStatus}; status message: ${msg}`);            }
+                throw new Error(`Checkstatus => status: ${resStatus}; status message: ${msg}`);
+            }
 
             if (!body) {
                 await this.delay(delayMilliSecs);
@@ -507,7 +549,7 @@ export class ArtifactClient {
         }
     }
 
-    private async checkStatusForDelete(url: string, name: string, token: string) {
+    private async checkStatusForDelete(url: string, name: string, scope: string) {
         var timeout = new Date().getTime() + (60000 * 20); // 20 Minutes
         var delayMilliSecs = 30000; // 0.5 minute
 
@@ -517,17 +559,30 @@ export class ArtifactClient {
                 SystemLogger.info(`Current time: ' ${currentTime}`);
                 throw new Error("Timeout error in checkStatus");
             }
-            var nbName = '';
 
+            var token = await currentTokenProvider().getToken(scope);
             var res = await this.client.get(url, this.getHeaders(token));
             var resStatus: number = res.message.statusCode!;
 
-            var body = await res.readBody();
+            var body = await readBody(res);
+            if (isRedirectStatus(resStatus)) {
+                throw redirectError(res);
+            }
+            // Other 4xx statuses (such as 404 once the operation is gone) end the
+            // wait, as before; auth and server failures must not look like success.
+            if (resStatus == 401 || resStatus == 403 || resStatus >= 500) {
+                throw new Error(`Checkstatus => status: ${resStatus}; status message: ${res.message.statusMessage}${body ? ': ' + body : ''}`);
+            }
             if(body.trim() != ""){
-                let bodyObj = JSON.parse(body);
+                let bodyObj;
+                try {
+                    bodyObj = JSON.parse(body);
+                } catch {
+                    throw new Error(`For Artifact: ${name} deletion status was not JSON (status ${resStatus}): ${body}`);
+                }
 
-                if(bodyObj["status"].toLowerCase() == "failed"){
-                    SystemLogger.info(bodyObj["error"]["message"]);
+                if(bodyObj["status"]?.toLowerCase() == "failed"){
+                    SystemLogger.info(bodyObj["error"]?.["message"]);
                     throw new Error(`For Artifact: ${name} deletion failed. ${JSON.stringify(bodyObj)}`);
                 }
 

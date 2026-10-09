@@ -6,6 +6,7 @@ import { ActionLogger, SystemLogger } from './utils/logger';
 import {BundleManager} from "./Operations/BundleManager";
 import {OPERATIONS} from "./utils/artifacts_enum";
 import {OperationManager} from "./Operations/OperationsManager";
+import { guardAgainstSilentExit } from "./exit_guard";
 
 export async function main() {
 
@@ -35,12 +36,16 @@ export async function main() {
     }
 }
 
+let settled = false;
+guardAgainstSilentExit(process, () => settled, (message) => core.setFailed(message));
+
 main()
     .then(() => {
+        settled = true;
         process.exit(0)
     })
     .catch((err: Error) => {
+        settled = true;
         core.setFailed(err);
         process.exit(1);
     });
-
