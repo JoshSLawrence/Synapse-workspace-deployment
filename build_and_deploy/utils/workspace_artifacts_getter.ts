@@ -179,6 +179,28 @@ export function getArtifactsToDeleteFromWorkspace(
     return artifactsToDelete;
 }
 
+// Managed private endpoints are often owned by infrastructure as code. When this
+// run doesn't deploy them, the template can't be the source of truth for them,
+// so a missing endpoint must not be read as a request to delete it.
+export function removeManagedPrivateEndpointsFromDeletion(artifactsToDelete: Resource[], canDeployMPE: boolean,
+    typeMap: Map<string, Artifact>): Resource[]
+{
+    if (canDeployMPE) {
+        return artifactsToDelete;
+    }
+
+    return artifactsToDelete.filter((resource) => {
+        let resourceType = resource.type.replace(` `,``).toLowerCase();
+
+        if (typeMap.get(resourceType) != Artifact.managedprivateendpoints) {
+            return true;
+        }
+
+        SystemLogger.info(`Skipping deletion of managed private endpoint ${resource.name}: managed private endpoints are only deleted when deployManagedPrivateEndpoint is true.`);
+        return false;
+    });
+}
+
 export async function DatalakeSubArtifactsToDelete(artifactsInWorkspace: Resource[], artifactsToDeploy: Resource[][], targetWorkspaceName: string, environment: string): Promise<Array<string>>{
     let artifactsToDelete = new Array<string>();
 

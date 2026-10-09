@@ -42,7 +42,7 @@ inputs:
     description: 'Use federated identity to generate the bearer token?'
     required: false
   deployManagedPrivateEndpoint:
-    description: 'Deploy managed private endpoints in the template.'
+    description: 'Deploy managed private endpoints in the template. When false, managed private endpoints are also never deleted, even with DeleteArtifactsNotInTemplate.'
     required: false
   FailOnMissingOverrides:
     description: 'Mark the pipeline as failed if ARM overrides are missing.'
