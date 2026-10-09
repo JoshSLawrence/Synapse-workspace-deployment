@@ -1,7 +1,7 @@
 import chai = require('chai');
-import { typeMap } from "../clients/artifacts_client";
-import { Resource } from "../utils/arm_template_utils";
-import { removeManagedPrivateEndpointsFromDeletion } from "../utils/workspace_artifacts_getter";
+import { typeMap } from "../src/clients/artifacts_client";
+import { Resource } from "../src/utils/arm_template_utils";
+import { removeManagedPrivateEndpointsFromDeletion } from "../src/utils/workspace_artifacts_getter";
 
 function resource(name: string, type: string): Resource {
     return { name, type, isDefault: false, content: '', dependson: [] };

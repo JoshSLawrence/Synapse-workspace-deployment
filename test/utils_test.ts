@@ -4,12 +4,12 @@ import {
     findDefaultArtifacts,
     getArtifactsFromArmTemplate,
     Resource
-} from "../utils/arm_template_utils";
-import { getParams, getRMUrl } from "../utils/deploy_utils";
-import { ILogger, SystemLogger } from "../utils/logger";
+} from "../src/utils/arm_template_utils";
+import { getParams, getRMUrl } from "../src/utils/deploy_utils";
+import { ILogger, SystemLogger } from "../src/utils/logger";
 import { armParams, armTemplate, armTemplate_complete, expectedArmTemplate } from "./helpers/utils_test_helpers";
-import { appendDefaultScope } from '../utils/federated_identity_utils';
-const pcu = require("../utils/service_principal_client_utils");
+import { appendDefaultScope } from '../src/utils/federated_identity_utils';
+const pcu = require("../src/utils/service_principal_client_utils");
 
 const chai_object = require('chai');
 const sinon = require("sinon");

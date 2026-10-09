@@ -1,4 +1,4 @@
-import {PackageFile, PackageFilesContent} from "../package_file";
+import {PackageFile, PackageFilesContent} from "../src/package_file";
 
 const chai_object = require('chai');
 const expect = chai_object.expect;
