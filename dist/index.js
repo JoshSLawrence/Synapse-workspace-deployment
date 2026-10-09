@@ -1871,6 +1871,138 @@ var ExportConstants;
 
 /***/ }),
 
+/***/ 5367:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.appendDefaultScope = appendDefaultScope;
+exports.createCredential = createCredential;
+exports.createTokenProvider = createTokenProvider;
+exports.getTokenProvider = getTokenProvider;
+exports.setTokenProvider = setTokenProvider;
+const core = __importStar(__nccwpck_require__(7484));
+const identity_1 = __nccwpck_require__(5261);
+const FEDERATED_AUDIENCE = 'api://AzureADTokenExchange';
+function appendDefaultScope(url) {
+    return url.replace(/\/+$/, '') + '/.default';
+}
+function requireInputs(mode, inputs, names) {
+    const missing = names.filter(name => !inputs[name]);
+    if (missing.length > 0) {
+        throw new Error(`Missing required input(s) for ${mode} authentication: ${missing.join(', ')}. ` +
+            `Set them on the action and retry.`);
+    }
+}
+/**
+ * Picks the credential for the configured auth mode. Managed identity wins
+ * over federated identity, which wins over a client secret, as before.
+ */
+function createCredential(inputs) {
+    if (inputs.managedIdentity == 'true') {
+        // A client ID selects a user-assigned identity; without one the
+        // system-assigned identity is used.
+        return inputs.clientId
+            ? new identity_1.ManagedIdentityCredential({ clientId: inputs.clientId })
+            : new identity_1.ManagedIdentityCredential();
+    }
+    if (inputs.federatedIdentity == 'true') {
+        requireInputs('federated identity', inputs, ['clientId', 'tenantId']);
+        core.debug(`Authenticating with federated credentials: client ${inputs.clientId}, tenant ${inputs.tenantId}`);
+        return new identity_1.ClientAssertionCredential(inputs.tenantId, inputs.clientId, async () => {
+            try {
+                return await core.getIDToken(FEDERATED_AUDIENCE);
+            }
+            catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                throw new Error('Failed to get the GitHub OIDC token. Ensure the job has `id-token: write` ' +
+                    `permission and the clientId and tenantId inputs are set: ${message}`);
+            }
+        }, { authorityHost: inputs.authorityHost, httpClient: inputs.httpClient });
+    }
+    requireInputs('client secret', inputs, ['clientId', 'clientSecret', 'tenantId']);
+    core.debug(`Authenticating with a client secret: client ${inputs.clientId}, tenant ${inputs.tenantId}`);
+    return new identity_1.ClientSecretCredential(inputs.tenantId, inputs.clientId, inputs.clientSecret, { authorityHost: inputs.authorityHost, httpClient: inputs.httpClient });
+}
+/**
+ * Wraps a credential so that every token it returns is masked in the logs.
+ * The credential caches tokens per scope until shortly before they expire,
+ * so keeping one provider for the run avoids a sign-in per artifact.
+ */
+function createTokenProvider(inputs, credential = createCredential(inputs)) {
+    const masked = new Set();
+    return {
+        async getToken(scope) {
+            let token;
+            try {
+                const accessToken = await credential.getToken(scope);
+                if (!accessToken) {
+                    throw new Error('the credential returned no token');
+                }
+                token = accessToken.token;
+            }
+            catch (err) {
+                const message = err instanceof Error ? err.message : String(err);
+                throw new Error(`Azure authentication failed: ${message}`);
+            }
+            if (!masked.has(token)) {
+                core.setSecret(token);
+                masked.add(token);
+            }
+            return token;
+        }
+    };
+}
+let provider;
+/** Returns the run's token provider, creating it on first use. */
+function getTokenProvider(inputs) {
+    if (!provider) {
+        provider = createTokenProvider(inputs);
+    }
+    return provider;
+}
+/** Test seam: install a fake provider, or pass undefined to reset. */
+function setTokenProvider(p) {
+    provider = p;
+}
+//# sourceMappingURL=auth.js.map
+
+/***/ }),
+
 /***/ 1053:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
@@ -1970,8 +2102,7 @@ exports.getRMUrl = getRMUrl;
 exports.getAdEndpointUrl = getAdEndpointUrl;
 exports.getRmEndpointUrl = getRmEndpointUrl;
 const core = __importStar(__nccwpck_require__(7484));
-const service_principal_client_utils_1 = __nccwpck_require__(415);
-const federated_identity_utils_1 = __nccwpck_require__(5484);
+const auth_1 = __nccwpck_require__(5367);
 var DeployStatus;
 (function (DeployStatus) {
     DeployStatus["success"] = "Success";
@@ -1985,40 +2116,44 @@ var Env;
     Env["usnat"] = "Azure US Government";
 })(Env || (exports.Env = Env = {}));
 async function getParams(dataplane = false, env = "") {
+    let environment;
+    let resourceGroup;
+    let clientId;
+    let clientSecret;
+    let subscriptionId;
+    let tenantId;
+    let managedIdentity;
+    let federatedIdentity;
+    let activeDirectoryEndpointUrl;
+    let resourceManagerEndpointUrl;
     try {
-        const env = core.getInput('Environment');
-        var resourceGroup = core.getInput("resourceGroup");
-        var clientId = core.getInput("clientId");
-        var clientSecret = core.getInput("clientSecret");
-        var subscriptionId = core.getInput("subscriptionId");
-        var tenantId = core.getInput("tenantId");
-        var managedIdentity = core.getInput("managedIdentity");
-        var federatedIdentity = core.getInput("federatedIdentity");
-        var activeDirectoryEndpointUrl = getAdEndpointUrl(env);
-        var resourceManagerEndpointUrl = getRmEndpointUrl(env);
+        environment = env || core.getInput('Environment');
+        resourceGroup = core.getInput("resourceGroup");
+        clientId = core.getInput("clientId");
+        clientSecret = core.getInput("clientSecret");
+        subscriptionId = core.getInput("subscriptionId");
+        tenantId = core.getInput("tenantId");
+        managedIdentity = core.getInput("managedIdentity");
+        federatedIdentity = core.getInput("federatedIdentity");
+        activeDirectoryEndpointUrl = getAdEndpointUrl(environment);
+        resourceManagerEndpointUrl = getRmEndpointUrl(environment);
     }
     catch (err) {
         throw new Error("Unable to parse the secret: " + err);
     }
     try {
         if (dataplane) {
-            resourceManagerEndpointUrl = await getRMUrl(env);
+            resourceManagerEndpointUrl = await getRMUrl(environment);
         }
-        let bearer;
-        if (managedIdentity == 'true') {
-            bearer = await (0, service_principal_client_utils_1.getManagedIdentityBearer)(resourceManagerEndpointUrl);
-        }
-        else if (federatedIdentity == 'true') {
-            bearer = await (0, federated_identity_utils_1.getAzureFederatedToken)({
-                clientId: clientId,
-                tenantId: tenantId,
-                subscriptionId: subscriptionId,
-                resourceManagerEndpointUrl: resourceManagerEndpointUrl
-            });
-        }
-        else {
-            bearer = await (0, service_principal_client_utils_1.getBearer)(clientId, clientSecret, subscriptionId, tenantId, resourceManagerEndpointUrl, activeDirectoryEndpointUrl);
-        }
+        const tokenProvider = (0, auth_1.getTokenProvider)({
+            clientId,
+            clientSecret,
+            tenantId,
+            managedIdentity,
+            federatedIdentity,
+            authorityHost: activeDirectoryEndpointUrl
+        });
+        const bearer = await tokenProvider.getToken((0, auth_1.appendDefaultScope)(resourceManagerEndpointUrl));
         let params = {
             'clientId': clientId,
             'clientSecret': clientSecret,
@@ -2034,7 +2169,8 @@ async function getParams(dataplane = false, env = "") {
         return params;
     }
     catch (err) {
-        throw new Error("Failed to fetch Bearer: " + err);
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error("Failed to fetch Bearer: " + message);
     }
 }
 async function getRMUrl(env) {
@@ -2074,83 +2210,6 @@ function getRmEndpointUrl(env) {
     }
 }
 //# sourceMappingURL=deploy_utils.js.map
-
-/***/ }),
-
-/***/ 5484:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getAzureFederatedToken = getAzureFederatedToken;
-exports.appendDefaultScope = appendDefaultScope;
-const identity_1 = __nccwpck_require__(5261);
-const core = __importStar(__nccwpck_require__(7484));
-async function getAzureFederatedToken(config) {
-    const { clientId, tenantId, subscriptionId, resourceManagerEndpointUrl } = config;
-    if (!clientId || !tenantId || !subscriptionId) {
-        throw new Error(`Missing required Azure configuration. Ensure AZURE_CLIENT_ID, AZURE_TENANT_ID, and AZURE_SUBSCRIPTION_ID are set`);
-    }
-    core.info("Authenticating to Azure using federated credentials...");
-    core.info(`Client ID: ${clientId}`);
-    core.info(`Tenant ID: ${tenantId}`);
-    core.info(`Subscription ID: ${subscriptionId}`);
-    // Get the GitHub OIDC token
-    const githubToken = await core.getIDToken("api://AzureADTokenExchange");
-    if (!githubToken) {
-        throw new Error("Failed to get GitHub OIDC token. Ensure id-token: write permission is set in workflow.");
-    }
-    core.info("Retrieved GitHub OIDC token");
-    // Create a credential that uses the GitHub OIDC token as a client assertion
-    const credential = new identity_1.ClientAssertionCredential(tenantId, clientId, async () => githubToken);
-    try {
-        const res = await credential.getToken(appendDefaultScope(resourceManagerEndpointUrl));
-        core.info("Successfully authenticated to Azure using federated credentials");
-        return res.token;
-    }
-    catch (error) {
-        core.error("Failed to authenticate to Azure");
-        throw new Error(`Azure authentication failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-}
-function appendDefaultScope(url) {
-    return url.replace(/\/+$/, "") + "/.default";
-}
-//# sourceMappingURL=federated_identity_utils.js.map
 
 /***/ }),
 
@@ -2289,8 +2348,6 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getBearer = getBearer;
-exports.getManagedIdentityBearer = getManagedIdentityBearer;
 exports.getWorkspaceLocation = getWorkspaceLocation;
 const httpClient = __importStar(__nccwpck_require__(6184));
 const deploy_utils_1 = __nccwpck_require__(3284);
@@ -2298,59 +2355,6 @@ const logger_1 = __nccwpck_require__(8993);
 const userAgent = 'synapse-github-cicd-deploy-task';
 const requestOptions = {};
 const client = new httpClient.HttpClient(userAgent, undefined, requestOptions);
-async function getBearer(clientId, clientSecret, subscriptionId, tenantId, resourceManagerEndpointUrl, activeDirectoryEndpointUrl) {
-    try {
-        return new Promise((resolve, reject) => {
-            var url = `${activeDirectoryEndpointUrl}${tenantId}/oauth2/token`;
-            var headers = {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            };
-            let requestBody = `client_id=${clientId}&client_secret=${clientSecret}&resource=${encodeURIComponent(resourceManagerEndpointUrl)}&subscription_id=${subscriptionId}&grant_type=client_credentials`;
-            client.post(url, requestBody, headers).then(async (res) => {
-                var resStatus = res.message.statusCode;
-                if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                    logger_1.SystemLogger.info(`Unable to fetch service principal token, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                    let error = await res.readBody();
-                    logger_1.SystemLogger.info(error);
-                    return reject(deploy_utils_1.DeployStatus.failed);
-                }
-                logger_1.SystemLogger.info(`Able to fetch service principal token: ${resStatus}; status message: ${res.message.statusMessage}`);
-                let body = await res.readBody();
-                return resolve(JSON.parse(body)["access_token"]);
-            });
-        });
-    }
-    catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error("Unable to fetch the service principal token: " + message);
-    }
-}
-async function getManagedIdentityBearer(resourceManagerEndpointUrl) {
-    try {
-        return new Promise((resolve, reject) => {
-            var url = `http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=${resourceManagerEndpointUrl}`;
-            var headers = {
-                'Metadata': 'true'
-            };
-            client.get(url, headers).then(async (res) => {
-                var resStatus = res.message.statusCode;
-                if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
-                    logger_1.SystemLogger.info(`Unable to fetch managed identity bearer token, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                    let error = await res.readBody();
-                    logger_1.SystemLogger.info(error);
-                    return reject(deploy_utils_1.DeployStatus.failed);
-                }
-                logger_1.SystemLogger.info(`Able to fetch managed identity bearer token: ${resStatus}; status message: ${res.message.statusMessage}`);
-                let body = await res.readBody();
-                return resolve(JSON.parse(body)["access_token"]);
-            });
-        });
-    }
-    catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error("Unable to fetch the managed identity bearer token: " + message);
-    }
-}
 async function getWorkspaceLocation(params, targetWorkspace) {
     try {
         return new Promise((resolve, reject) => {
@@ -19091,7 +19095,7 @@ var gOPS = Object.getOwnPropertySymbols;
 var symToString = typeof Symbol === 'function' ? Symbol.prototype.toString : null;
 var isEnumerable = Object.prototype.propertyIsEnumerable;
 
-var inspectCustom = (__nccwpck_require__(6121).custom);
+var inspectCustom = (__nccwpck_require__(8978).custom);
 var inspectSymbol = inspectCustom && isSymbol(inspectCustom) ? inspectCustom : null;
 
 module.exports = function inspect_(obj, options, depth, seen) {
@@ -19473,7 +19477,7 @@ function arrObjKeys(obj, inspect) {
 
 /***/ }),
 
-/***/ 6121:
+/***/ 8978:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 module.exports = __nccwpck_require__(9023).inspect;
@@ -19512,7 +19516,7 @@ module.exports = {
 
 /***/ }),
 
-/***/ 240:
+/***/ 7859:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 "use strict";
@@ -21826,7 +21830,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const qs = __nccwpck_require__(240);
+const qs = __nccwpck_require__(7859);
 const url = __nccwpck_require__(7016);
 const path = __nccwpck_require__(6928);
 const zlib = __nccwpck_require__(3106);
@@ -56473,7 +56477,7 @@ var import_core_client = __nccwpck_require__(160);
 var import_core_util = __nccwpck_require__(7779);
 var import_core_rest_pipeline = __nccwpck_require__(778);
 var import_errors = __nccwpck_require__(6242);
-var import_identityTokenEndpoint = __nccwpck_require__(7859);
+var import_identityTokenEndpoint = __nccwpck_require__(240);
 var import_constants = __nccwpck_require__(516);
 var import_tracing = __nccwpck_require__(9180);
 var import_logging = __nccwpck_require__(2615);
@@ -57815,7 +57819,7 @@ async function parseJsonToken(result) {
 
 /***/ }),
 
-/***/ 8978:
+/***/ 6121:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 var __defProp = Object.defineProperty;
@@ -58590,7 +58594,7 @@ var import_azureDeveloperCliCredential = __nccwpck_require__(9190);
 var import_azureCliCredential = __nccwpck_require__(7204);
 var import_azurePowerShellCredential = __nccwpck_require__(8223);
 var import_visualStudioCodeCredential = __nccwpck_require__(8088);
-var import_brokerCredential = __nccwpck_require__(8978);
+var import_brokerCredential = __nccwpck_require__(6121);
 function createDefaultBrokerCredential(options = {}) {
   return new import_brokerCredential.BrokerCredential(options);
 }
@@ -61649,7 +61653,7 @@ function getBearerTokenProvider(credential, scopes, options) {
 
 /***/ }),
 
-/***/ 7859:
+/***/ 240:
 /***/ ((module) => {
 
 var __defProp = Object.defineProperty;
