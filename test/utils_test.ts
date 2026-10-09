@@ -116,7 +116,7 @@ describe("Test SystemLogger utils", () => {
     });
 });
 
-describe("Test Federated Identity utils", () => {
+describe("Test scope helper", () => {
     it("Scopes should have /.default appended regardles of presence of trailing /'s", () => {
       expect(appendDefaultScope("https://management.azure.com")).to.be.equal("https://management.azure.com/.default");
       expect(appendDefaultScope("https://management.azure.com/")).to.be.equal("https://management.azure.com/.default");

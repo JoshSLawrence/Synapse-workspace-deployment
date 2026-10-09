@@ -80,6 +80,16 @@ describe("Test authentication", () => {
             expect(credential).to.be.instanceOf(ManagedIdentityCredential);
         });
 
+        it('passes the client ID to a user-assigned managed identity', () => {
+            const credential = createCredential(inputs({ managedIdentity: 'true', clientId: 'user-assigned-client-id' }));
+            expect((credential as any).clientId).to.equal('user-assigned-client-id');
+        });
+
+        it('leaves the client ID unset for the system-assigned managed identity', () => {
+            const credential = createCredential(inputs({ managedIdentity: 'true', clientId: '' }));
+            expect((credential as any).clientId).to.not.be.ok;
+        });
+
         it('uses a client assertion credential when federatedIdentity is true', () => {
             expect(createCredential(inputs({ federatedIdentity: 'true' }))).to.be.instanceOf(ClientAssertionCredential);
         });
@@ -182,6 +192,32 @@ describe("Test authentication", () => {
             let message = '';
             try { await provider.getToken('scope'); } catch (err) { message = (err as Error).message; }
             expect(message).to.equal('Azure authentication failed: boom');
+        });
+    });
+
+    describe("caching and timeouts", () => {
+        it('makes one token request for two getToken calls on the same scope', async () => {
+            sinon.stub(core, 'setSecret');
+            const urls: string[] = [];
+            const provider = createTokenProvider(inputs({ httpClient: recordingHttpClient(urls) }));
+
+            await provider.getToken('https://management.azure.com/.default');
+            const afterFirst = urls.filter(u => u.includes('/oauth2/v2.0/token')).length;
+            await provider.getToken('https://management.azure.com/.default');
+            const afterSecond = urls.filter(u => u.includes('/oauth2/v2.0/token')).length;
+
+            expect(afterFirst).to.equal(1);
+            expect(afterSecond).to.equal(1);
+        });
+
+        it('fails with the authority host when sign-in never answers', async () => {
+            const credential = { getToken: () => new Promise<never>(() => { /* never settles */ }) };
+            const provider = createTokenProvider(inputs({ authorityHost: 'https://login.example.test/' }), credential, 20);
+
+            let message = '';
+            try { await provider.getToken('scope'); } catch (err) { message = (err as Error).message; }
+            expect(message).to.contain('Sign-in to https://login.example.test/ timed out');
+            expect(message).to.contain('retry the job');
         });
     });
 
