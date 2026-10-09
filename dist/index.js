@@ -362,6 +362,45 @@ exports.OperationManager = OperationManager;
 
 /***/ }),
 
+/***/ 1854:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getWorkspaceLocation = getWorkspaceLocation;
+const http_1 = __nccwpck_require__(9523);
+const logger_1 = __nccwpck_require__(8993);
+async function getWorkspaceLocation(params, targetWorkspace) {
+    try {
+        const headers = {
+            'Authorization': 'Bearer ' + params.bearer
+        };
+        const url = `${params.resourceManagerEndpointUrl}subscriptions/${params.subscriptionId}/` +
+            `resourceGroups/${params.resourceGroup}/providers/Microsoft.Synapse/workspaces/` +
+            `${targetWorkspace}?api-version=2019-06-01-preview`;
+        const res = await http_1.httpClient.get(url, headers);
+        const resStatus = res.message.statusCode;
+        const body = await (0, http_1.readBody)(res);
+        if ((0, http_1.isRedirectStatus)(resStatus)) {
+            throw (0, http_1.redirectError)(res);
+        }
+        if (!(0, http_1.isSuccessStatus)(resStatus)) {
+            logger_1.SystemLogger.info(`Unable to fetch location of workspace, status: ${resStatus}; status message: ${res.message.statusMessage}`);
+            throw new Error(`status ${resStatus}: ${body}.` + (0, http_1.permissionHint)(resStatus, 'a role that can read the workspace (for example Reader) on the resource group'));
+        }
+        logger_1.SystemLogger.info(`Able to fetch location of workspace: ${resStatus}; status message: ${res.message.statusMessage}`);
+        return JSON.parse(body)['location'];
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error("Unable to fetch the location of the workspace: " + message);
+    }
+}
+//# sourceMappingURL=arm.js.map
+
+/***/ }),
+
 /***/ 8281:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -406,6 +445,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ArtifactClient = exports.typeMap = void 0;
 const core = __importStar(__nccwpck_require__(7484));
 const http_1 = __nccwpck_require__(9523);
+const auth_1 = __nccwpck_require__(5367);
 const artifacts_enum_1 = __nccwpck_require__(8502);
 const deploy_utils_1 = __nccwpck_require__(3284);
 const logger_1 = __nccwpck_require__(8993);
@@ -497,7 +537,12 @@ class ArtifactClient {
         const res = await this.client.del(url, this.getHeaders(token));
         var resStatus = res.message.statusCode;
         console.log(`For Artifact: ${resource}: ArtifactDeletionTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
+        const body = await (0, http_1.readBody)(res);
+        if ((0, http_1.isRedirectStatus)(resStatus)) {
+            throw (0, http_1.redirectError)(res);
+        }
         if (!(0, http_1.isSuccessStatus)(resStatus)) {
+            console.log(`For Artifact: ${resource}: deletion failed: ${body}`);
             throw new Error(deploy_utils_1.DeployStatus.failed);
         }
         return deploy_utils_1.DeployStatus.success;
@@ -506,10 +551,10 @@ class ArtifactClient {
         for (let i = 0; i < this.deploymentTrackingRequests.length; i++) {
             let deploymentTrackingRequest = this.deploymentTrackingRequests[i];
             if (isDelete) {
-                await this.checkStatusForDelete(deploymentTrackingRequest.url, deploymentTrackingRequest.name, deploymentTrackingRequest.token);
+                await this.checkStatusForDelete(deploymentTrackingRequest.url, deploymentTrackingRequest.name, deploymentTrackingRequest.scope);
             }
             else {
-                await this.checkStatus(deploymentTrackingRequest.url, deploymentTrackingRequest.name, deploymentTrackingRequest.token);
+                await this.checkStatus(deploymentTrackingRequest.url, deploymentTrackingRequest.name, deploymentTrackingRequest.scope);
             }
         }
         while (this.deploymentTrackingRequests.length > 0) {
@@ -549,7 +594,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.credential.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Credential deployment failed " + JSON.stringify(err));
+            throw new Error("Credential deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployIntegrationruntime(baseUrl, payload, token) {
@@ -562,7 +607,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(base_url, `${artifacts_enum_1.Artifact.integrationruntime.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Integration runtime deployment failed " + JSON.stringify(err));
+            throw new Error("Integration runtime deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployKqlScript(baseUrl, payload, token) {
@@ -571,7 +616,7 @@ class ArtifactClient {
         }
         catch (err) {
             logger_1.SystemLogger.info(err instanceof Error ? err.message : String(err));
-            throw new Error("KqlScript deployment failed " + JSON.stringify(err));
+            throw new Error("KqlScript deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployLinkedservice(baseUrl, payload, token) {
@@ -579,7 +624,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.linkedservice.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Linked service deployment failed " + JSON.stringify(err));
+            throw new Error("Linked service deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployTrigger(baseUrl, payload, token) {
@@ -587,7 +632,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.trigger.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Trigger deployment failed " + JSON.stringify(err));
+            throw new Error("Trigger deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployDataflow(baseUrl, payload, token) {
@@ -595,7 +640,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.dataflow.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Data flow deployment failed " + JSON.stringify(err));
+            throw new Error("Data flow deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployPipeline(baseUrl, payload, token) {
@@ -603,7 +648,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.pipeline.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Data set deployment failed " + JSON.stringify(err));
+            throw new Error("Data set deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployDataset(baseUrl, payload, token) {
@@ -611,7 +656,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.dataset.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Data set deployment failed " + JSON.stringify(err));
+            throw new Error("Data set deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deploySqlScript(baseUrl, payload, token) {
@@ -619,7 +664,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.sqlscript.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("SQL script deployment status " + JSON.stringify(err));
+            throw new Error("SQL script deployment status " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployNotebook(baseUrl, payload, token) {
@@ -627,7 +672,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.notebook.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("Notebook deployment status " + JSON.stringify(err));
+            throw new Error("Notebook deployment status " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deploySparkJobDefinition(baseUrl, payload, token) {
@@ -635,7 +680,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.sparkjobdefinition.toString()}s`, payload, token);
         }
         catch (err) {
-            throw new Error("SparkJobDefination deployment status " + JSON.stringify(err));
+            throw new Error("SparkJobDefination deployment status " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployManagedPrivateEndpoint(baseUrl, payload, token) {
@@ -648,7 +693,7 @@ class ArtifactClient {
             return await this.artifactDeploymentTask(baseUrl, `${artifacts_enum_1.Artifact.managedprivateendpoints.toString()}`, payload, token);
         }
         catch (err) {
-            throw new Error("ManagedPrivateEndpoint deployment status " + JSON.stringify(err));
+            throw new Error("ManagedPrivateEndpoint deployment status " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deployDatabase(baseUrl, payload, token) {
@@ -657,7 +702,7 @@ class ArtifactClient {
         }
         catch (err) {
             console.log(err);
-            throw new Error("Database deployment failed " + JSON.stringify(err));
+            throw new Error("Database deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async deploySparkConfiguration(baseUrl, payload, token) {
@@ -666,7 +711,7 @@ class ArtifactClient {
         }
         catch (err) {
             console.log(err);
-            throw new Error("Spark Configuration deployment failed " + JSON.stringify(err));
+            throw new Error("Spark Configuration deployment failed " + (err instanceof Error ? err.message : String(err)));
         }
     }
     async artifactsGroupDeploymentTask(baseUrl, payloadObj, token) {
@@ -696,8 +741,11 @@ class ArtifactClient {
                 const res = await this.client.put(url, JSON.stringify(artifact), this.getHeaders(token));
                 let resStatus = res.message.statusCode;
                 console.log(`For Artifact: ${artifact['name']} of type ${artifact['type']}: ArtifactDeploymentTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
+                const body = await (0, http_1.readBody)(res);
+                if ((0, http_1.isRedirectStatus)(resStatus)) {
+                    throw (0, http_1.redirectError)(res);
+                }
                 if (!(0, http_1.isSuccessStatus)(resStatus)) {
-                    const body = await res.readBody();
                     if (!!body) {
                         console.log(`For Artifact: ${artifact['name']} of type ${artifact['type']} deployment failed : ${body}`);
                     }
@@ -712,6 +760,17 @@ class ArtifactClient {
             throw err;
         }
     }
+    // Integration runtimes deploy through Azure Resource Manager; everything
+    // else uses the Synapse data plane.
+    async scopeFor(resourceType) {
+        if (resourceType === `${artifacts_enum_1.Artifact.integrationruntime}s`) {
+            return (0, auth_1.appendDefaultScope)(this.params.resourceManagerEndpointUrl);
+        }
+        return this.dataPlaneScope();
+    }
+    async dataPlaneScope() {
+        return (0, auth_1.appendDefaultScope)(await (0, deploy_utils_1.getRMUrl)(core.getInput('Environment')));
+    }
     async artifactDeploymentTask(baseUrl, resourceType, payloadObj, token) {
         let url = this.buildArtifactUrl(baseUrl, resourceType, payloadObj.name);
         let payload = payloadObj.content;
@@ -725,7 +784,10 @@ class ArtifactClient {
         }
         let resStatus = res.message.statusCode;
         logger_1.SystemLogger.info(`For Artifact: ${payloadObj.name}: ArtifactDeploymentTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
-        let body = await res.readBody();
+        let body = await (0, http_1.readBody)(res);
+        if ((0, http_1.isRedirectStatus)(resStatus)) {
+            throw (0, http_1.redirectError)(res);
+        }
         if (!(0, http_1.isSuccessStatus)(resStatus)) {
             if (!!body) {
                 logger_1.SystemLogger.info("Deploy artifact failed: " + body);
@@ -735,6 +797,7 @@ class ArtifactClient {
         let location = res.message.headers.location;
         let responseJson = JSON.parse(body);
         let operationId = responseJson['operationId'];
+        let scope = await this.scopeFor(resourceType);
         if (!!operationId) {
             if (!location) {
                 location = this.getStatusUrl(baseUrl, resourceType, operationId);
@@ -742,7 +805,7 @@ class ArtifactClient {
             let deploymentTrackingRequest = {
                 url: location,
                 name: payloadObj.name,
-                token: token
+                scope: scope
             };
             this.deploymentTrackingRequests.push(deploymentTrackingRequest);
             return deploy_utils_1.DeployStatus.success;
@@ -756,7 +819,7 @@ class ArtifactClient {
                 let deploymentTrackingRequest = {
                     url: url,
                     name: payloadObj.name,
-                    token: token
+                    scope: scope
                 };
                 this.deploymentTrackingRequests.push(deploymentTrackingRequest);
                 return deploy_utils_1.DeployStatus.success;
@@ -776,7 +839,12 @@ class ArtifactClient {
         }
         var resStatus = res.message.statusCode;
         logger_1.SystemLogger.info(`For Artifact: ${payloadObj.name}: ArtifactDeletionTask status: ${resStatus}; status message: ${res.message.statusMessage}`);
+        const body = await (0, http_1.readBody)(res);
+        if ((0, http_1.isRedirectStatus)(resStatus)) {
+            throw (0, http_1.redirectError)(res);
+        }
         if (!(0, http_1.isSuccessStatus)(resStatus)) {
+            logger_1.SystemLogger.info(`For Artifact: ${payloadObj.name}: deletion failed: ${body}`);
             throw deploy_utils_1.DeployStatus.failed;
         }
         if (resourceType != artifacts_enum_1.Artifact.managedprivateendpoints) {
@@ -785,14 +853,14 @@ class ArtifactClient {
                 let deploymentTrackingRequest = {
                     url: location,
                     name: payloadObj.name,
-                    token: token
+                    scope: await this.dataPlaneScope()
                 };
                 this.deploymentTrackingRequests.push(deploymentTrackingRequest);
             }
         }
         return deploy_utils_1.DeployStatus.success;
     }
-    async checkStatus(url, name, token) {
+    async checkStatus(url, name, scope) {
         var timeout = new Date().getTime() + (60000 * 20); // 20 Minutes
         var delayMilliSecs = 30000; // 0.5 minute
         while (true) {
@@ -802,15 +870,24 @@ class ArtifactClient {
                 throw new Error("Timeout error in checkStatus");
             }
             var artifactName = '';
+            var token = await (0, auth_1.currentTokenProvider)().getToken(scope);
             var res = await this.client.get(url, this.getHeaders(token));
             var resStatus = res.message.statusCode;
-            var body = await res.readBody();
+            var body = await (0, http_1.readBody)(res);
             logger_1.SystemLogger.info(`For artifact: ${name}: Checkstatus: ${resStatus}; status message: ${res.message.statusMessage}`);
-            if (resStatus != 200 && resStatus != 201 && resStatus != 202) {
+            if ((0, http_1.isRedirectStatus)(resStatus)) {
+                throw (0, http_1.redirectError)(res);
+            }
+            if (!(0, http_1.isSuccessStatus)(resStatus)) {
                 let msg = res.message.statusMessage;
-                let response = JSON.parse(body);
-                if (body != null && response.error != null && response.error.message != null) {
-                    msg = response.error.message;
+                try {
+                    let response = JSON.parse(body);
+                    if (response?.error?.message != null) {
+                        msg = response.error.message;
+                    }
+                }
+                catch {
+                    // A non-JSON error body: report the status alone.
                 }
                 throw new Error(`Checkstatus => status: ${resStatus}; status message: ${msg}`);
             }
@@ -838,7 +915,7 @@ class ArtifactClient {
             }
         }
     }
-    async checkStatusForDelete(url, name, token) {
+    async checkStatusForDelete(url, name, scope) {
         var timeout = new Date().getTime() + (60000 * 20); // 20 Minutes
         var delayMilliSecs = 30000; // 0.5 minute
         while (true) {
@@ -847,14 +924,28 @@ class ArtifactClient {
                 logger_1.SystemLogger.info(`Current time: ' ${currentTime}`);
                 throw new Error("Timeout error in checkStatus");
             }
-            var nbName = '';
+            var token = await (0, auth_1.currentTokenProvider)().getToken(scope);
             var res = await this.client.get(url, this.getHeaders(token));
             var resStatus = res.message.statusCode;
-            var body = await res.readBody();
+            var body = await (0, http_1.readBody)(res);
+            if ((0, http_1.isRedirectStatus)(resStatus)) {
+                throw (0, http_1.redirectError)(res);
+            }
+            // Other 4xx statuses (such as 404 once the operation is gone) end the
+            // wait, as before; auth and server failures must not look like success.
+            if (resStatus == 401 || resStatus == 403 || resStatus >= 500) {
+                throw new Error(`Checkstatus => status: ${resStatus}; status message: ${res.message.statusMessage}${body ? ': ' + body : ''}`);
+            }
             if (body.trim() != "") {
-                let bodyObj = JSON.parse(body);
-                if (bodyObj["status"].toLowerCase() == "failed") {
-                    logger_1.SystemLogger.info(bodyObj["error"]["message"]);
+                let bodyObj;
+                try {
+                    bodyObj = JSON.parse(body);
+                }
+                catch {
+                    throw new Error(`For Artifact: ${name} deletion status was not JSON (status ${resStatus}): ${body}`);
+                }
+                if (bodyObj["status"]?.toLowerCase() == "failed") {
+                    logger_1.SystemLogger.info(bodyObj["error"]?.["message"]);
                     throw new Error(`For Artifact: ${name} deletion failed. ${JSON.stringify(bodyObj)}`);
                 }
             }
@@ -898,6 +989,31 @@ exports.ArtifactClient = ArtifactClient;
 
 /***/ }),
 
+/***/ 8277:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PENDING_REQUESTS_MESSAGE = void 0;
+exports.guardAgainstSilentExit = guardAgainstSilentExit;
+exports.PENDING_REQUESTS_MESSAGE = 'The action stopped with requests still pending; the deployment may be incomplete. Re-run the job.';
+/**
+ * Node exits 0 when the event loop drains, even if main() never settled. A
+ * promise that never settles must never look like a green run.
+ */
+function guardAgainstSilentExit(proc, hasSettled, setFailed) {
+    proc.on('beforeExit', () => {
+        if (!hasSettled()) {
+            setFailed(exports.PENDING_REQUESTS_MESSAGE);
+            proc.exitCode = 1;
+        }
+    });
+}
+//# sourceMappingURL=exit_guard.js.map
+
+/***/ }),
+
 /***/ 9523:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
@@ -907,6 +1023,10 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.httpClient = exports.DATA_PLANE_SOCKET_TIMEOUT_MS = exports.userAgent = void 0;
 exports.createHttpClient = createHttpClient;
 exports.isSuccessStatus = isSuccessStatus;
+exports.isRedirectStatus = isRedirectStatus;
+exports.redirectError = redirectError;
+exports.readBody = readBody;
+exports.permissionHint = permissionHint;
 const http_client_1 = __nccwpck_require__(4844);
 exports.userAgent = 'synapse-github-cicd-deploy-task';
 // Without a socket timeout a stalled connection never settles, so the job
@@ -921,6 +1041,58 @@ function createHttpClient(socketTimeout) {
 exports.httpClient = createHttpClient(exports.DATA_PLANE_SOCKET_TIMEOUT_MS);
 function isSuccessStatus(status) {
     return status === 200 || status === 201 || status === 202;
+}
+function isRedirectStatus(status) {
+    return status !== undefined && status >= 300 && status < 400;
+}
+function redirectError(res) {
+    return new Error(`Unexpected redirect to ${res.message.headers.location ?? 'an unknown location'}; redirects are disabled because every request carries a bearer token.`);
+}
+/**
+ * Reads a response body, always settling. @actions/http-client's own readBody
+ * listens only for data and end, so a connection reset or stalled body leaves
+ * its promise pending forever and the job can exit green with work undone.
+ */
+function readBody(res, idleTimeoutMs = exports.DATA_PLANE_SOCKET_TIMEOUT_MS) {
+    const message = res.message;
+    const host = message.req?.host ?? 'the server';
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        let ended = false;
+        const fail = (reason) => {
+            if (!ended) {
+                ended = true;
+                reject(new Error(`${reason}; re-run the job.`));
+            }
+        };
+        message.on('data', (chunk) => {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        });
+        message.on('end', () => {
+            if (!ended) {
+                ended = true;
+                resolve(Buffer.concat(chunks).toString());
+            }
+        });
+        message.on('error', (err) => fail(`Reading the response from ${host} failed: ${err.message}`));
+        message.on('aborted', () => fail(`Connection closed before the response from ${host} was complete`));
+        message.on('close', () => {
+            if (!message.complete) {
+                fail(`Connection closed before the response from ${host} was complete`);
+            }
+        });
+        message.setTimeout(idleTimeoutMs, () => {
+            const reason = `No data from ${host} for ${Math.round(idleTimeoutMs / 1000)} s`;
+            fail(reason);
+            message.destroy(new Error(reason));
+        });
+    });
+}
+// A 401 or 403 is almost always a missing role, which the raw status does not say.
+function permissionHint(status, role) {
+    return status === 401 || status === 403
+        ? ` The identity is likely missing ${role}; grant it and re-run the job.`
+        : '';
 }
 //# sourceMappingURL=http.js.map
 
@@ -973,6 +1145,7 @@ const logger_1 = __nccwpck_require__(8993);
 const BundleManager_1 = __nccwpck_require__(8905);
 const artifacts_enum_1 = __nccwpck_require__(8502);
 const OperationsManager_1 = __nccwpck_require__(9355);
+const exit_guard_1 = __nccwpck_require__(8277);
 async function main() {
     logger_1.SystemLogger.setLogger(new logger_1.ActionLogger(true));
     try {
@@ -999,11 +1172,15 @@ async function main() {
         throw new Error(err instanceof Error ? err.message : String(err));
     }
 }
+let settled = false;
+(0, exit_guard_1.guardAgainstSilentExit)(process, () => settled, (message) => core.setFailed(message));
 main()
     .then(() => {
+    settled = true;
     process.exit(0);
 })
     .catch((err) => {
+    settled = true;
     core.setFailed(err);
     process.exit(1);
 });
@@ -1025,7 +1202,7 @@ const arm_template_utils_1 = __nccwpck_require__(918);
 const artifacts_enum_1 = __nccwpck_require__(8502);
 const deploy_utils_1 = __nccwpck_require__(3284);
 const logger_1 = __nccwpck_require__(8993);
-const service_principal_client_utils_1 = __nccwpck_require__(415);
+const arm_1 = __nccwpck_require__(1854);
 const workspace_artifacts_getter_1 = __nccwpck_require__(3935);
 class Orchestrator {
     packageFiles;
@@ -1051,7 +1228,7 @@ class Orchestrator {
             if (!(armTemplateContent && armParameterContent)) {
                 throw new Error('Empty template or parameters file');
             }
-            let targetLocation = await (0, service_principal_client_utils_1.getWorkspaceLocation)(this.artifactClient.getParams(), this.targetWorkspace);
+            let targetLocation = await (0, arm_1.getWorkspaceLocation)(this.artifactClient.getParams(), this.targetWorkspace);
             let canDeployMPE = await (0, workspace_artifacts_getter_1.SKipManagedPE)(this.targetWorkspace, this.environment);
             canDeployMPE = !canDeployMPE && this.deployMPE;
             let artifactsToDeploy = await (0, arm_template_utils_1.getArtifacts)(armParameterContent, armTemplateContent, overrideArmParameters, this.targetWorkspace, targetLocation);
@@ -1916,13 +2093,16 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SIGN_IN_TIMEOUT_MS = void 0;
 exports.appendDefaultScope = appendDefaultScope;
 exports.createCredential = createCredential;
 exports.createTokenProvider = createTokenProvider;
 exports.getTokenProvider = getTokenProvider;
+exports.currentTokenProvider = currentTokenProvider;
 exports.setTokenProvider = setTokenProvider;
 const core = __importStar(__nccwpck_require__(7484));
 const identity_1 = __nccwpck_require__(5261);
+exports.SIGN_IN_TIMEOUT_MS = 60000;
 const FEDERATED_AUDIENCE = 'api://AzureADTokenExchange';
 function appendDefaultScope(url) {
     return url.replace(/\/+$/, '') + '/.default';
@@ -1964,18 +2144,32 @@ function createCredential(inputs) {
     core.debug(`Authenticating with a client secret: client ${inputs.clientId}, tenant ${inputs.tenantId}`);
     return new identity_1.ClientSecretCredential(inputs.tenantId, inputs.clientId, inputs.clientSecret, { authorityHost: inputs.authorityHost, httpClient: inputs.httpClient });
 }
+// A sign-in that never answers would otherwise hold the job until the runner
+// kills it.
+async function withTimeout(promise, ms, message) {
+    let timer;
+    const timeout = new Promise((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+    });
+    try {
+        return await Promise.race([promise, timeout]);
+    }
+    finally {
+        clearTimeout(timer);
+    }
+}
 /**
  * Wraps a credential so that every token it returns is masked in the logs.
  * The credential caches tokens per scope until shortly before they expire,
  * so keeping one provider for the run avoids a sign-in per artifact.
  */
-function createTokenProvider(inputs, credential = createCredential(inputs)) {
+function createTokenProvider(inputs, credential = createCredential(inputs), signInTimeoutMs = exports.SIGN_IN_TIMEOUT_MS) {
     const masked = new Set();
     return {
         async getToken(scope) {
             let token;
             try {
-                const accessToken = await credential.getToken(scope);
+                const accessToken = await withTimeout(credential.getToken(scope), signInTimeoutMs, `Sign-in to ${inputs.authorityHost} timed out after ${Math.round(signInTimeoutMs / 1000)} s; retry the job.`);
                 if (!accessToken) {
                     throw new Error('the credential returned no token');
                 }
@@ -1998,6 +2192,13 @@ let provider;
 function getTokenProvider(inputs) {
     if (!provider) {
         provider = createTokenProvider(inputs);
+    }
+    return provider;
+}
+/** Returns the provider created by the first sign-in, for later token refreshes. */
+function currentTokenProvider() {
+    if (!provider) {
+        throw new Error('No Azure sign-in has happened yet; this is a bug in the action.');
     }
     return provider;
 }
@@ -2145,7 +2346,11 @@ async function getParams(dataplane = false, env = "") {
         resourceManagerEndpointUrl = getRmEndpointUrl(environment);
     }
     catch (err) {
-        throw new Error("Unable to parse the secret: " + err);
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error("Unable to read the action inputs: " + message + ". Check the Environment input is one of Azure Public, Azure China or Azure US Government.");
+    }
+    if (clientSecret) {
+        core.setSecret(clientSecret);
     }
     try {
         if (dataplane) {
@@ -2313,45 +2518,6 @@ exports.ActionLogger = ActionLogger;
 
 /***/ }),
 
-/***/ 415:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-// Copyright (c) Microsoft Corporation.
-// Licensed under the MIT license.
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getWorkspaceLocation = getWorkspaceLocation;
-const http_1 = __nccwpck_require__(9523);
-const deploy_utils_1 = __nccwpck_require__(3284);
-const logger_1 = __nccwpck_require__(8993);
-async function getWorkspaceLocation(params, targetWorkspace) {
-    try {
-        const headers = {
-            'Authorization': 'Bearer ' + params.bearer
-        };
-        const url = `${params.resourceManagerEndpointUrl}subscriptions/${params.subscriptionId}/` +
-            `resourceGroups/${params.resourceGroup}/providers/Microsoft.Synapse/workspaces/` +
-            `${targetWorkspace}?api-version=2019-06-01-preview`;
-        const res = await http_1.httpClient.get(url, headers);
-        const resStatus = res.message.statusCode;
-        if (!(0, http_1.isSuccessStatus)(resStatus)) {
-            logger_1.SystemLogger.info(`Unable to fetch location of workspace, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-            throw new Error(deploy_utils_1.DeployStatus.failed);
-        }
-        logger_1.SystemLogger.info(`Able to fetch location of workspace: ${resStatus}; status message: ${res.message.statusMessage}`);
-        const body = await res.readBody();
-        return JSON.parse(body)['location'];
-    }
-    catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        throw new Error("Unable to fetch the location of the workspace: " + message);
-    }
-}
-//# sourceMappingURL=service_principal_client_utils.js.map
-
-/***/ }),
-
 /***/ 3935:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -2438,22 +2604,24 @@ async function getArtifactsFromWorkspaceOfType(artifactTypeToQuery, targetWorksp
         try {
             var res = await http_1.httpClient.get(resourceUrl, headers);
             var resStatus = res.message.statusCode;
+            resourcesString = await (0, http_1.readBody)(res);
+            if ((0, http_1.isRedirectStatus)(resStatus)) {
+                throw (0, http_1.redirectError)(res);
+            }
             if (!(0, http_1.isSuccessStatus)(resStatus)) {
                 logger_1.SystemLogger.info(`Failed to fetch workspace info, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                throw "Failed to fetch workspace info " + res.message.statusMessage;
+                throw new Error(`Failed to fetch ${artifactTypeToQuery} artifacts from the workspace: status ${resStatus}: ${resourcesString}.` +
+                    (0, http_1.permissionHint)(resStatus, 'a Synapse RBAC role that can read artifacts (for example Synapse Artifact User) on the workspace'));
             }
-            resourcesString = await res.readBody();
             if (!resourcesString) {
                 logger_1.SystemLogger.info("No response body for url: " + resourceUrl);
-                throw "Failed to fetch workspace info response";
+                throw new Error("Failed to fetch workspace info response: the response body was empty.");
             }
         }
         catch (err) {
-            if (typeof err === 'string') {
-                throw err;
-            }
-            logger_1.SystemLogger.info('Failed to fetch artifacts from workspace: ' + err);
-            throw deployUtils.DeployStatus.failed;
+            const message = err instanceof Error ? err.message : String(err);
+            logger_1.SystemLogger.info('Failed to fetch artifacts from workspace: ' + message);
+            throw new Error(message);
         }
         var resourcesJson = JSON.parse(resourcesString);
         const list = resourcesJson.value ?? resourcesJson?.items;
@@ -2733,8 +2901,8 @@ async function SKipManagedPE(targetWorkspaceName, environment) {
     };
     var resourceUrl = getResourceFromWorkspaceUrl(targetWorkspaceName, environment, artifacts_enum_1.Artifact.managedprivateendpoints);
     const res = await http_1.httpClient.get(resourceUrl, headers);
+    const body = await (0, http_1.readBody)(res);
     if (!(0, http_1.isSuccessStatus)(res.message.statusCode)) {
-        const body = await res.readBody();
         if (body.includes("does not have a managed virtual network associated"))
             return true;
     }
@@ -2772,12 +2940,11 @@ async function GetDatabasesWithChildren(databases, targetWorkspaceName, environm
                     };
                     const res = await http_1.httpClient.get(requestURI, headers);
                     let resStatus = res.message.statusCode;
+                    let body = await (0, http_1.readBody)(res);
                     if (!(0, http_1.isSuccessStatus)(resStatus)) {
                         console.info(`Failed to fetch database ${db.name} info, status: ${resStatus}; status message: ${res.message.statusMessage}`);
-                        let body = await res.readBody();
-                        throw new Error("Failed to fetch database info :" + body);
+                        throw new Error(`Failed to fetch database info: status ${resStatus}: ${body}.` + (0, http_1.permissionHint)(resStatus, 'a Synapse RBAC role that can read artifacts on the workspace'));
                     }
-                    let body = await res.readBody();
                     let childrenObj = JSON.parse(body)["items"];
                     for (let child of childrenObj) {
                         let childObj = {
