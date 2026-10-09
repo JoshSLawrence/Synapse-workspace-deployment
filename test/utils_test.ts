@@ -52,7 +52,7 @@ describe("Test Arm template utils", () => {
         expect(completeArmTemplate).to.be.equal(expectedArmTemplate);
 
         let defaultArtifacts = findDefaultArtifacts(completeArmTemplate, targetWorkspaceName);
-        expect(defaultArtifacts.get('github-cicd-1-WorkspaceDefaultSqlServer')).to.be.equal('MochaTesting-WorkspaceDefaultSqlServer');
+        expect(defaultArtifacts.get('myworkspace-WorkspaceDefaultSqlServer')).to.be.equal('MochaTesting-WorkspaceDefaultSqlServer');
     });
 
     it('should populate arm resources and dependency tree', async () => {

@@ -9,7 +9,7 @@ describe("Validate artifacts parsing", () => {
 
     it('should find the depedants', () => {
         let dependants = getDependentsFromArtifactFromWorkspace(JSON.stringify(DATASETPAYLOAD));
-        expect(dependants[0]).equal("LinkedServiceReference/bigdataqa0924ws-WorkspaceDefaultStorage");
+        expect(dependants[0]).equal("LinkedServiceReference/myworkspace-WorkspaceDefaultStorage");
         dependants = getDependentsFromArtifactFromWorkspace(JSON.stringify(PIPELINEPAYLOAD));
         expect(dependants[0]).equal("DatasetReference/SourceDataset_pqd");
         expect(dependants[1]).equal("DatasetReference/DestinationDataset_pqd");
