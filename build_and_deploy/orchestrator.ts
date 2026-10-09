@@ -13,7 +13,7 @@ import {
     DatalakeSubArtifactsToDelete,
     getArtifactsFromWorkspace,
     getArtifactsToDeleteFromWorkspace,
-    getArtifactsToDeleteFromWorkspaceInOrder, SKipManagedPE
+    getArtifactsToDeleteFromWorkspaceInOrder, removeManagedPrivateEndpointsFromDeletion, SKipManagedPE
 } from "./utils/workspace_artifacts_getter";
 
 export class Orchestrator {
@@ -65,6 +65,7 @@ export class Orchestrator {
                 var artifactsInWorkspace = await getArtifactsFromWorkspace(this.targetWorkspace, this.environment);
                 SystemLogger.info(`Found ${artifactsInWorkspace.length} artifacts in the workspace.`);
                 var artifactsToDeleteInWorkspace = getArtifactsToDeleteFromWorkspace(artifactsInWorkspace, artifactsToDeploy, typeMap);
+                artifactsToDeleteInWorkspace = removeManagedPrivateEndpointsFromDeletion(artifactsToDeleteInWorkspace, canDeployMPE, typeMap);
                 SystemLogger.info(`Found ${artifactsToDeleteInWorkspace.length} artifacts in the workspace that many need to be deleted.`);
                 var artifactsToDeleteInWorkspaceInOrder = getArtifactsToDeleteFromWorkspaceInOrder(artifactsToDeleteInWorkspace);
                 await this.deleteResourcesInOrder(this.artifactClient, artifactsToDeleteInWorkspaceInOrder!, this.targetWorkspace, this.environment, armParameterContent);

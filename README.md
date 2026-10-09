@@ -2,6 +2,11 @@
 
 A GitHub Action to deploy Synapse artifacts using templates. With this action you can automate your workflow to deploy artifacts and manage synapse resources.
 
+## Fork changes
+This fork ([JoshSLawrence/Synapse-workspace-deployment](https://github.com/JoshSLawrence/Synapse-workspace-deployment)) differs from upstream in two ways:
+* GitHub OIDC (federated identity) sign-in, with the `federatedIdentity` input.
+* Managed private endpoints are never deleted unless `deployManagedPrivateEndpoint` is true. Upstream deletes every endpoint missing from the template whenever `DeleteArtifactsNotInTemplate` is true.
+
 ## Dependencies
 * [Checkout](https://github.com/actions/checkout) To check-out your repository so the workflow can access any specified template and parameter files.
 
@@ -48,7 +53,7 @@ TargetWorkspaceName:
     description: 'Use federated identity to generate the bearer token'
     required: false
   deployManagedPrivateEndpoint:
-    description: 'Deploy managed private endpoints in the template.'
+    description: 'Deploy managed private endpoints in the template. When false, managed private endpoints are also never deleted, even with DeleteArtifactsNotInTemplate.'
     required: false
   FailOnMissingOverrides:
     description: 'Mark the pipeline as failed if ARM overrides are missing.'
@@ -134,6 +139,9 @@ uses: Azure/synapse-workspace-deployment
 In order to deploy managed private endpoints, pass deployManagedPrivateEndpoint is true.
 Along with you may also be required to override the resourceIDs in the templates so that the new private endpoint
 does not point to the same resource as source workspace.
+
+When deployManagedPrivateEndpoint is not true, managed private endpoints are also never deleted,
+even with DeleteArtifactsNotInTemplate, so endpoints owned by other tooling survive a deployment.
 
 #### Secrets
 `clientSecret` is a sensitive detail and must be stored in GitHub secrets.
