@@ -3,7 +3,7 @@ exports.id = 935;
 exports.ids = [935];
 exports.modules = {
 
-/***/ 36935:
+/***/ 6935:
 /***/ ((__unused_webpack___webpack_module__, __webpack_exports__, __webpack_require__) => {
 
 // ESM COMPAT FLAG
@@ -21,19 +21,19 @@ var external_node_process_ = __webpack_require__(1708);
 // EXTERNAL MODULE: external "node:buffer"
 var external_node_buffer_ = __webpack_require__(4573);
 // EXTERNAL MODULE: external "node:path"
-var external_node_path_ = __webpack_require__(76760);
+var external_node_path_ = __webpack_require__(6760);
 // EXTERNAL MODULE: external "node:url"
-var external_node_url_ = __webpack_require__(73136);
+var external_node_url_ = __webpack_require__(3136);
 // EXTERNAL MODULE: external "node:util"
-var external_node_util_ = __webpack_require__(57975);
+var external_node_util_ = __webpack_require__(7975);
 // EXTERNAL MODULE: external "node:child_process"
-var external_node_child_process_ = __webpack_require__(31421);
+var external_node_child_process_ = __webpack_require__(1421);
 // EXTERNAL MODULE: external "node:fs/promises"
-var promises_ = __webpack_require__(51455);
+var promises_ = __webpack_require__(1455);
 // EXTERNAL MODULE: external "node:os"
-var external_node_os_ = __webpack_require__(48161);
+var external_node_os_ = __webpack_require__(8161);
 // EXTERNAL MODULE: external "node:fs"
-var external_node_fs_ = __webpack_require__(73024);
+var external_node_fs_ = __webpack_require__(3024);
 ;// CONCATENATED MODULE: ./node_modules/is-docker/index.js
 
 
@@ -405,7 +405,7 @@ const execFile = (0,external_node_util_.promisify)(external_node_child_process_.
 
 // Path to included `xdg-open`.
 const open_dirname = external_node_path_.dirname((0,external_node_url_.fileURLToPath)(require("url").pathToFileURL(__filename).href));
-const localXdgOpenPath = external_node_path_.join(open_dirname, 'xdg-open');
+const localXdgOpenPath = __webpack_require__.ab + "xdg-open";
 
 const {platform, arch} = external_node_process_;
 
@@ -602,7 +602,7 @@ const baseOpen = async options => {
 			// Check if local `xdg-open` exists and is executable.
 			let exeLocalXdgOpen = false;
 			try {
-				await promises_.access(localXdgOpenPath, promises_.constants.X_OK);
+				await promises_.access(__webpack_require__.ab + "xdg-open", promises_.constants.X_OK);
 				exeLocalXdgOpen = true;
 			} catch {}
 
