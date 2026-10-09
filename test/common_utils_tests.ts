@@ -9,9 +9,6 @@ import {
     DEFAULTARTIFACTSTORAGE
 } from "./helpers/test_fixtures";
 
-var chaiAsPromised = require("chai-as-promised");
-
-chai.use(chaiAsPromised);
 var should = chai.should();
 
 describe('CommonUtils', function () {
